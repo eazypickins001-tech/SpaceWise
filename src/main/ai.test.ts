@@ -284,3 +284,88 @@ describe("requestSummary: what it reports when the endpoint refuses", () => {
     assert.match(out.error, /did not answer within/);
   });
 });
+
+describe("requestSummary: trying again when the failure came from upstream", () => {
+  // Gateways report an unavailable provider as a 4xx on a request that is
+  // perfectly well formed, and the same request often succeeds a moment later.
+  // Measured against a real free model, that was two failures in three.
+  it("tries again, and can therefore succeed", async () => {
+    let calls = 0;
+    const server = await startServer(() => {
+      calls++;
+      return calls < 3
+        ? { status: 400, body: JSON.stringify({ error: { message: "Provider returned error" } }) }
+        : { status: 200, body: completion("Recovered.") };
+    });
+    try {
+      const out = await requestSummary("hello", settingsFor(server.url));
+      assert.equal(out.ok, true, "a transient failure upstream must not be the end of it");
+      assert.equal(out.text, "Recovered.");
+      assert.equal(server.seen.length, 3, "and the endpoint should have been asked again");
+    } finally {
+      await server.close();
+    }
+  });
+
+  // The other half of the same decision: a refusal that is genuinely about the
+  // request is not worth repeating, so it is not repeated.
+  it("does not try again when the refusal is about the request itself", async () => {
+    const server = await startServer(() => ({
+      status: 400,
+      body: JSON.stringify({ error: { message: "gpt-nonsense is not a valid model ID" } }),
+    }));
+    try {
+      const out = await requestSummary("hello", settingsFor(server.url));
+      assert.equal(out.ok, false);
+      assert.equal(server.seen.length, 1, "asking again would not help, and would only cost the person time");
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("says how many times it tried when the endpoint keeps failing", async () => {
+    const server = await startServer(() => ({ status: 503, body: "unavailable" }));
+    try {
+      const out = await requestSummary("hello", settingsFor(server.url));
+      assert.equal(out.ok, false);
+      assert.match(out.error, /answered 503/);
+      assert.match(out.error, /after 3 attempts/, "an unreliable endpoint should read as unreliable, not as a mistake");
+    } finally {
+      await server.close();
+    }
+  });
+});
+
+describe("requestSummary: a reply that answered but said nothing", () => {
+  // Seen in the wild: a reasoning model returns 200, an empty content field, and
+  // its text in a separate reasoning field. Reporting that as a plain failure
+  // sends someone looking at their own request.
+  it("names the reason when a model answers with only its reasoning", async () => {
+    const server = await startServer(() => ({
+      status: 200,
+      body: JSON.stringify({ choices: [{ message: { content: "", reasoning: "Let me think about this scan..." } }] }),
+    }));
+    try {
+      const out = await requestSummary("hello", settingsFor(server.url));
+      assert.equal(out.ok, false);
+      assert.match(out.error, /only the model's reasoning/);
+      assert.match(out.error, /try a different model/, "and says what to do about it");
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("does not mistake a genuinely empty reply for that case", async () => {
+    const server = await startServer(() => ({
+      status: 200,
+      body: JSON.stringify({ choices: [{ message: { content: "   " } }] }),
+    }));
+    try {
+      const out = await requestSummary("hello", settingsFor(server.url));
+      assert.match(out.error, /no text in it/);
+      assert.ok(!/reasoning/.test(out.error), "nothing was said about reasoning, so nothing is claimed");
+    } finally {
+      await server.close();
+    }
+  });
+});

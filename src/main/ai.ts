@@ -89,6 +89,27 @@ const SUMMARY_TIMEOUT_MS = 120_000;
 // first, and a wall of text is not an explanation.
 const MAX_DETAIL = 300;
 
+// A refusal that came from upstream is worth another try.
+//
+// Gateways report an unavailable provider as a 4xx, and the same request
+// against the same model often succeeds a moment later -- measured at two
+// failures in three against a free model on OpenRouter, on requests that were
+// identical and perfectly well formed. That is not a bad request, and treating
+// it as one turns a flaky provider into a dead end for the person.
+const RETRYABLE_STATUS = new Set([408, 429, 500, 502, 503, 504]);
+const MAX_ATTEMPTS = 3;
+const RETRY_PAUSE_MS = 500;
+
+// The status is usually enough. It is not for OpenRouter, which answers
+// "Provider returned error" with a 400 when the model's own provider is
+// unhappy -- a 400 that says nothing about the request. A refusal that is
+// genuinely about the request (an unknown model, say) does not match this and
+// is not retried.
+function worthRetrying(status: number, detail: string): boolean {
+  if (RETRYABLE_STATUS.has(status)) return true;
+  return /provider returned error|provider error|upstream/i.test(detail);
+}
+
 // Whatever the endpoint said when it refused, in one line.
 //
 // Most providers answer with JSON carrying a message -- OpenRouter and OpenAI
@@ -140,72 +161,113 @@ export async function requestSummary(
   }
 
   const url = settings.baseUrl.trim().replace(/\/+$/, "") + "/chat/completions";
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  let response: Response;
-  try {
-    response = await fetchImpl(url, {
-      method: "POST",
-      signal: controller.signal,
-      headers: { "content-type": "application/json", authorization: `Bearer ${settings.apiKey.trim()}` },
-      body: JSON.stringify({
-        model: settings.model.trim(),
-        messages: [
-          { role: "system", content: SUMMARY_SYSTEM_PROMPT },
-          { role: "user", content: body },
-        ],
-        max_tokens: 400,
-        temperature: 0.2,
-      }),
-    });
-  } catch (err) {
-    clearTimeout(timer);
-    const why = controller.signal.aborted
-      ? `the endpoint did not answer within ${timeoutMs / 1000} s`
-      : `could not reach the endpoint: ${String((err as Error)?.message ?? err)}`;
-    return { ok: false, text: "", error: why, bytes: size };
-  }
 
-  clearTimeout(timer);
-
-  if (!response.ok) {
-    // The provider's own explanation is the most useful thing on this path, so
-    // it is carried through rather than replaced by the status code. Nothing is
-    // guessed at: whatever the endpoint said is shown, bounded.
-    let detail = "";
+  // One attempt, kept separate so that a failure from upstream can be tried
+  // again without repeating the checks above.
+  const once = async (): Promise<{ outcome: SummaryOutcome; retryable: boolean }> => {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    let response: Response;
     try {
-      detail = explain(await response.text());
+      response = await fetchImpl(url, {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: `Bearer ${settings.apiKey.trim()}` },
+        signal: controller.signal,
+        body: JSON.stringify({
+          model: settings.model.trim(),
+          messages: [
+            { role: "system", content: SUMMARY_SYSTEM_PROMPT },
+            { role: "user", content: body },
+          ],
+          max_tokens: 400,
+          temperature: 0.2,
+        }),
+      });
+    } catch (err) {
+      clearTimeout(timer);
+      const why = controller.signal.aborted
+        ? `the endpoint did not answer within ${timeoutMs / 1000} s`
+        : `could not reach the endpoint: ${String((err as Error)?.message ?? err)}`;
+      // A connection that failed is worth one more try. A timeout is not: the
+      // endpoint has already had its whole allowance.
+      return { outcome: { ok: false, text: "", error: why, bytes: size }, retryable: !controller.signal.aborted };
+    }
+
+    clearTimeout(timer);
+
+    if (!response.ok) {
+      // The provider's own explanation is the most useful thing on this path, so
+      // it is carried through rather than replaced by the status code. Nothing is
+      // guessed at: whatever the endpoint said is shown, bounded.
+      let detail = "";
+      try {
+        detail = explain(await response.text());
+      } catch {
+        // Nothing readable came back, so the status is all there is to report.
+      }
+      return {
+        outcome: {
+          ok: false,
+          text: "",
+          error: `the endpoint answered ${response.status}${detail === "" ? "" : `: ${detail}`}`,
+          bytes: size,
+        },
+        retryable: worthRetrying(response.status, detail),
+      };
+    }
+
+    let raw: string;
+    try {
+      raw = await response.text();
     } catch {
-      // Nothing readable came back, so the status is all there is to report.
+      return { outcome: { ok: false, text: "", error: "the reply could not be read", bytes: size }, retryable: false };
     }
-    return {
-      ok: false,
-      text: "",
-      error: `the endpoint answered ${response.status}${detail === "" ? "" : `: ${detail}`}`,
-      bytes: size,
-    };
+    if (encoder.encode(raw).length > MAX_REPLY_BYTES) {
+      return { outcome: { ok: false, text: "", error: "the reply was far larger than a summary should be", bytes: size }, retryable: false };
+    }
+
+    try {
+      const parsed = JSON.parse(raw) as { choices?: { message?: { content?: string; reasoning?: string } }[] };
+      const reply = parsed.choices?.[0]?.message;
+      const text = reply?.content;
+      if (typeof text !== "string" || text.trim() === "") {
+        // A reasoning model can answer happily and put everything in a separate
+        // field, leaving the answer empty. That is worth saying, because it is
+        // the difference between "your request was wrong" and "this model does
+        // not answer the way this feature needs".
+        const onlyReasoning = typeof reply?.reasoning === "string" && reply.reasoning.trim() !== "";
+        return {
+          outcome: {
+            ok: false,
+            text: "",
+            error: onlyReasoning
+              ? "the reply contained only the model's reasoning and no summary; try a different model"
+              : "the reply had no text in it",
+            bytes: size,
+          },
+          retryable: false,
+        };
+      }
+      return { outcome: { ok: true, text: text.trim(), error: "", bytes: size }, retryable: false };
+    } catch {
+      return { outcome: { ok: false, text: "", error: "the reply was not readable", bytes: size }, retryable: false };
+    }
+  };
+
+  let outcome: SummaryOutcome = { ok: false, text: "", error: "no attempt was made", bytes: size };
+  let tries = 0;
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    tries = attempt;
+    const tried = await once();
+    if (tried.outcome.ok) return tried.outcome;
+    outcome = tried.outcome;
+    if (!tried.retryable || attempt === MAX_ATTEMPTS) break;
+    await new Promise((r) => setTimeout(r, RETRY_PAUSE_MS * attempt));
   }
 
-  let raw: string;
-  try {
-    raw = await response.text();
-  } catch {
-    return { ok: false, text: "", error: "the reply could not be read", bytes: size };
-  }
-  if (encoder.encode(raw).length > MAX_REPLY_BYTES) {
-    return { ok: false, text: "", error: "the reply was far larger than a summary should be", bytes: size };
-  }
-
-  try {
-    const parsed = JSON.parse(raw) as { choices?: { message?: { content?: string } }[] };
-    const text = parsed.choices?.[0]?.message?.content;
-    if (typeof text !== "string" || text.trim() === "") {
-      return { ok: false, text: "", error: "the reply had no text in it", bytes: size };
-    }
-    return { ok: true, text: text.trim(), error: "", bytes: size };
-  } catch {
-    return { ok: false, text: "", error: "the reply was not readable", bytes: size };
-  }
+  // Say that it was tried more than once, so that an unreliable provider reads
+  // as unreliable rather than as something the person got wrong.
+  return tries > 1 ? { ...outcome, error: `${outcome.error} (after ${tries} attempts)` } : outcome;
 }
 
 // What the interface is allowed to know about the settings. The key itself is
