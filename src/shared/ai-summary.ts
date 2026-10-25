@@ -222,3 +222,151 @@ export const SUMMARY_SYSTEM_PROMPT = [
   "If the summary withholds names, say that plainly instead of guessing at what the folders are.",
   "Be brief. At most 150 words, in plain sentences, no headings and no bullet lists.",
 ].join(" ");
+
+// ---------------------------------------------------------------------------
+// Asking about one folder
+// ---------------------------------------------------------------------------
+
+// A question about a single finding, rather than the whole scan.
+//
+// The division of labour matters and is enforced by what is sent: everything
+// below the question is text this application's own rules produced -- why the
+// item was flagged, what the rules say happens if it goes, and what this kind of
+// folder is and how it comes back. The model is given the facts and asked to
+// explain them. It is never asked to decide, because it cannot see the folder
+// and a confident guess about someone's files is the one answer that could cost
+// them something.
+export interface ChatItem {
+  label: string;
+  bytes: number;
+  files: number;
+  risk: string;
+  reason: string;
+  consequence: string;
+}
+
+export interface ChatCategory {
+  label: string;
+  whatItContains: string;
+  whyItGrows: string;
+  regeneration: string;
+}
+
+export interface ChatTurn {
+  question: string;
+  answer: string;
+}
+
+export interface ChatInput {
+  rootName: string;
+  item: ChatItem;
+  category: ChatCategory | null;
+  question: string;
+  history: ChatTurn[];
+  // Whether removal goes to the Recycle Bin, which is a fact about the
+  // application rather than about the folder. A rule the person can act on.
+  recoverable: boolean;
+}
+
+export interface ChatPayload {
+  text: string;
+  namesIncluded: boolean;
+  bytes: number;
+  truncated: boolean;
+}
+
+export const CHAT_SYSTEM_PROMPT = [
+  "You are helping someone understand one folder found by a local disk scan.",
+  "Everything above the question was produced by this application's own rules. Treat it as the authority: explain it, and do not contradict it or add facts that are not there.",
+  "You cannot read files and you must not imply that you have. You know only what you were given.",
+  "Do not say whether the folder is safe to delete, and do not advise deleting it or keeping it. The risk and the consequence are already stated by the application; repeat those instead of deciding.",
+  "If asked whether removing it would harm the computer, answer from the stated consequence and how the folder comes back, and say plainly that it goes to the Recycle Bin when the application says so.",
+  "If the name was withheld, say that plainly rather than guessing at what the folder is.",
+  "Be brief. At most 120 words, in plain sentences, no headings and no bullet lists.",
+].join(" ");
+
+// How much of the conversation is carried back. Enough to make a follow-up
+// sentence make sense, not enough to grow without limit.
+export const CHAT_HISTORY_TURNS = 3;
+
+export function buildChatMessage(input: ChatInput, options: PayloadOptions): ChatPayload {
+  // A floor, so that the facts and the question always fit whatever a caller
+  // asks for. They are the part the answer depends on; everything else gives way.
+  const maxBytes = Math.max(1024, options.maxBytes ?? SUMMARY_MAX_BYTES);
+  const names = options.includeNames;
+  const bytesOf = (parts: string[]): number => new TextEncoder().encode(parts.join("\n")).length;
+
+  const label = names ? input.item.label : "(the name is withheld)";
+  const head: string[] = [
+    "SpaceWise: a question about one folder",
+    "",
+    "Folder        " + label,
+    "In the        " + (names ? input.rootName : "(the name is withheld)"),
+    "Size on disk  " + bytesText(input.item.bytes) + " in " + countText(input.item.files),
+    "Risk          " + input.item.risk,
+    "",
+    "Why the rules flagged it",
+    "  " + input.item.reason,
+    "",
+    "What the rules say happens if it goes",
+    "  " + input.item.consequence,
+  ];
+  if (input.recoverable) {
+    head.push("  It goes to the Recycle Bin, so it can be brought back.");
+  }
+  if (input.category) {
+    head.push(
+      "",
+      "About this kind of folder",
+      "  " + input.category.label + ": " + input.category.whatItContains,
+      "  Why it grows: " + input.category.whyItGrows,
+      "  How it comes back: " + input.category.regeneration,
+    );
+  }
+
+  const tail: string[] = [
+    "",
+    "Question",
+    "  " + oneLine(input.question),
+    "",
+    "This is the whole message. No file contents are included, and nothing is deleted by asking.",
+  ];
+
+  // The conversation is added from the most recent backwards, and only while it
+  // actually fits. Measuring beats counting turns: with a fixed number the
+  // message could still be too large, and with a count that always fits nothing
+  // would ever need dropping, which would make the flag below meaningless.
+  const turns: ChatTurn[] = [];
+  for (let i = input.history.length - 1; i >= 0 && turns.length < CHAT_HISTORY_TURNS; i--) {
+    const candidate = [input.history[i], ...turns];
+    const block = ["", "Earlier in this conversation"];
+    for (const turn of candidate) {
+      block.push("  They asked: " + oneLine(turn.question));
+      block.push("  You answered: " + oneLine(turn.answer));
+    }
+    if (bytesOf([...head, ...block, ...tail]) > maxBytes) break;
+    turns.unshift(input.history[i]);
+  }
+
+  const lines = [...head];
+  if (turns.length > 0) {
+    lines.push("", "Earlier in this conversation");
+    for (const turn of turns) {
+      lines.push("  They asked: " + oneLine(turn.question));
+      lines.push("  You answered: " + oneLine(turn.answer));
+    }
+  }
+  lines.push(...tail);
+
+  const text = lines.join("\n");
+  // Not "the message was cut": the facts and the question are always whole. It
+  // means part of the conversation was left out of the message.
+  const dropped = input.history.length - turns.length;
+  return { text, namesIncluded: names, bytes: bytesOf([text]), truncated: dropped > 0 };
+}
+
+// Answers and questions arrive with line breaks; a transcript reads better flat.
+function oneLine(value: string, limit = 400): string {
+  const flat = String(value ?? "").replace(/\s+/g, " ").trim();
+  return flat.length > limit ? flat.slice(0, limit) + "…" : flat;
+}

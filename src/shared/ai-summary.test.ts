@@ -1,6 +1,6 @@
 import { strict as assert } from "node:assert";
 import { describe, it } from "node:test";
-import { SUMMARY_MAX_BYTES, SUMMARY_SYSTEM_PROMPT, buildSummaryPayload, relativeLabel } from "./ai-summary";
+import { SUMMARY_MAX_BYTES, SUMMARY_SYSTEM_PROMPT, buildSummaryPayload, relativeLabel, CHAT_HISTORY_TURNS, CHAT_SYSTEM_PROMPT, buildChatMessage } from "./ai-summary";
 import type { SummaryInput } from "./ai-summary";
 
 const ROOT = "C:\\Users\\me\\Projects";
@@ -171,5 +171,106 @@ describe("what the summary is told to do", () => {
 
   it("keeps the answer short", () => {
     assert.match(SUMMARY_SYSTEM_PROMPT, /At most 150 words/);
+  });
+});
+
+describe("asking about one folder", () => {
+  const base = {
+    rootName: "Project",
+    item: {
+      label: "node_modules",
+      bytes: 3_100_000_000,
+      files: 41_000,
+      risk: "low",
+      reason: "It is a dependency folder and it has not been touched in 8 months.",
+      consequence: "Every package is downloaded again on the next install.",
+    },
+    category: {
+      label: "Dependency folders",
+      whatItContains: "Packages installed by npm, pnpm or yarn.",
+      whyItGrows: "Every install adds to it and nothing expires.",
+      regeneration: "Restored by installing again, which needs a network.",
+    },
+    question: "What happens if I remove this?",
+    history: [],
+    recoverable: true,
+  };
+
+  // The whole design in one assertion: the rules' own words are what the model
+  // is given, and the model is what puts them into an answer.
+  it("sends the rules' own words rather than a bare size", () => {
+    const out = buildChatMessage(base, { includeNames: true });
+    assert.match(out.text, /has not been touched in 8 months/, "why it was flagged");
+    assert.match(out.text, /downloaded again on the next install/, "what happens if it goes");
+    assert.match(out.text, /Packages installed by npm/, "what this kind of folder is");
+    assert.match(out.text, /needs a network/, "how it comes back");
+    assert.match(out.text, /goes to the Recycle Bin/, "and that it is recoverable");
+  });
+
+  it("carries the question itself", () => {
+    const out = buildChatMessage({ ...base, question: "Is this the same as my pip cache?" }, { includeNames: true });
+    assert.match(out.text, /Is this the same as my pip cache\?/);
+  });
+
+  // The same guarantee the summary makes, for the same reason.
+  it("carries no path, even with names wanted", () => {
+    const out = buildChatMessage(
+      { ...base, item: { ...base.item, label: relativeLabel("C:\\Users\\me\\Project", "C:\\Users\\me\\Project\\node_modules") } },
+      { includeNames: true },
+    );
+    assert.ok(!out.text.includes("C:\\Users"), "no absolute path");
+    assert.match(out.text, /node_modules/, "but the folder can still be named");
+  });
+
+  it("withholds the name when names are not wanted", () => {
+    const out = buildChatMessage(base, { includeNames: false });
+    assert.ok(!out.text.includes("node_modules"), "the name must not travel");
+    assert.ok(!out.text.includes("Project"), "nor the folder it is in");
+    assert.match(out.text, /withheld/, "and says so, rather than nothing");
+    assert.equal(out.namesIncluded, false);
+  });
+
+  it("does not pretend a category exists when it does not", () => {
+    const out = buildChatMessage({ ...base, category: null }, { includeNames: true });
+    assert.ok(!/About this kind of folder/.test(out.text));
+  });
+
+  it("carries the last few turns and drops the older ones", () => {
+    const history = Array.from({ length: CHAT_HISTORY_TURNS + 2 }, (_, i) => ({
+      question: "question " + i,
+      answer: "answer " + i,
+    }));
+    const out = buildChatMessage({ ...base, history }, { includeNames: true });
+    assert.match(out.text, new RegExp("question " + (history.length - 1)), "the most recent turn is there");
+    assert.ok(!out.text.includes("question 0"), "and the oldest has gone");
+  });
+
+  it("flattens a multi-line answer to keep the transcript readable", () => {
+    const out = buildChatMessage({ ...base, history: [{ question: "why?", answer: "Because\n\nit is\n   old." }] }, { includeNames: true });
+    assert.match(out.text, /Because it is old\./);
+  });
+
+  it("keeps within a small allowance, giving up the conversation rather than the facts", () => {
+    const history = Array.from({ length: 5 }, (_, i) => ({ question: "question " + i, answer: "answer " + i }));
+    const out = buildChatMessage({ ...base, history }, { includeNames: true, maxBytes: 1024 });
+    assert.ok(out.bytes <= 1024, `stayed within the allowance, got ${out.bytes}`);
+    assert.equal(out.truncated, true, "and said that part of the conversation was left out");
+    assert.match(out.text, /What happens if I remove this/, "the question survives, because the answer depends on it");
+    assert.match(out.text, /has not been touched in 8 months/, "and so do the rules' own words");
+  });
+});
+
+describe("what the chat prompt forbids", () => {
+  it("forbids deciding whether to delete, and forbids pretending to know more", () => {
+    assert.match(CHAT_SYSTEM_PROMPT, /Do not say whether the folder is safe to delete/);
+    assert.match(CHAT_SYSTEM_PROMPT, /do not advise deleting it or keeping it/);
+    assert.match(CHAT_SYSTEM_PROMPT, /cannot read files/);
+    assert.match(CHAT_SYSTEM_PROMPT, /must not imply/);
+    assert.match(CHAT_SYSTEM_PROMPT, /treat it as the authority|Treat it as the authority/, "the rules are the authority, not the model");
+  });
+
+  it("tells it to answer about harm from the stated consequence", () => {
+    assert.match(CHAT_SYSTEM_PROMPT, /would harm the computer/);
+    assert.match(CHAT_SYSTEM_PROMPT, /stated consequence/);
   });
 });
