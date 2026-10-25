@@ -4,7 +4,7 @@
 // for the survivors. Kept out of the worker that runs it so it can be tested
 // directly against planted files; `dupworker.ts` is a thin shell over this.
 import { createHash } from "crypto";
-import { closeSync, fstatSync, openSync, readSync } from "fs";
+import { closeSync, fstatSync, openSync, readSync, statSync } from "fs";
 import type { DupCandidate, DupGroup, DupProgress } from "../shared/types";
 
 export const EDGE = 16 * 1024;
@@ -89,6 +89,29 @@ function split(
   return [...groups.values()].filter((g) => g.ids.length > 1);
 }
 
+// Whether another name on disk points at these same bytes.
+//
+// A file with a link count above one is not a duplicate worth offering: deleting
+// one of its names frees nothing, because the other name still holds the file.
+// Counting it would report space the user cannot get back. Hard links are rare
+// for most people and ordinary for anyone using pnpm, whose entire store is
+// built from them, so on a developer's folder this is the difference between an
+// honest saving and an invented one.
+//
+// Windows reports the link count as `nlink`, the same as the Unixes, so this
+// works on the platform the application ships for.
+//
+// A path that cannot be examined counts as shared. Nothing is offered for
+// deletion on the strength of a fact that could not be established, which is the
+// same reason a file that cannot be hashed is refused rather than assumed.
+function sharesItsBytes(path: string): boolean {
+  try {
+    return statSync(path).nlink > 1;
+  } catch {
+    return true;
+  }
+}
+
 export function findDuplicates(candidates: DupCandidate[], options: DupOptions = {}): DupGroup[] {
   const buffer = Buffer.allocUnsafe(CHUNK);
   const report = options.onProgress;
@@ -106,9 +129,21 @@ export function findDuplicates(candidates: DupCandidate[], options: DupOptions =
   // Pass 1: head and tail of every candidate.
   const survivors: { size: number; ids: number[]; paths: string[] }[] = [];
   let done = 0;
-  const totalFiles = candidates.reduce((a, c) => a + c.ids.length, 0);
+  // Names whose bytes are shared with another name on disk are taken out before
+  // a single byte is read, so they cannot reach the groups the interface offers
+  // or the figure it reports. A candidate left with one name cannot be a
+  // duplicate, so it goes too, and the progress total below stays honest: it
+  // counts the files that will actually be examined.
+  const work = candidates
+    .map((c) => {
+      const keep = c.paths.map((p) => !sharesItsBytes(p));
+      return { size: c.size, ids: c.ids.filter((_, i) => keep[i]), paths: c.paths.filter((_, i) => keep[i]) };
+    })
+    .filter((c) => c.ids.length > 1);
 
-  for (const c of candidates) {
+  const totalFiles = work.reduce((a, c) => a + c.ids.length, 0);
+
+  for (const c of work) {
     for (const g of split(c.ids, c.paths, (p) => {
       done++;
       tick({ done, total: totalFiles, bytes: 0, totalBytes: 0 });

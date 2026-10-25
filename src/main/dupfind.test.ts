@@ -1,8 +1,9 @@
 import { strict as assert } from "node:assert";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { linkSync, mkdtempSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, describe, it } from "node:test";
+import { reclaimableBytes } from "../shared/dupes";
 import type { DupCandidate } from "../shared/types";
 import { CHUNK, EDGE, edgeHash, findDuplicates } from "./dupfind";
 
@@ -202,5 +203,47 @@ describe("duplicates: awkward input", () => {
     const expected = [...candidate.ids];
     const out = findDuplicates([candidate], { everyMs: 0 });
     assert.deepEqual([...out[0].ids].sort((x, y) => x - y), expected.sort((x, y) => x - y));
+  });
+});
+
+describe("duplicates: names that share their bytes", () => {
+  // A hard link is one file under two names. Deleting either name frees
+  // nothing, because the other name still holds the file, so a pair like this
+  // must never be offered as reclaimable space. This is not hypothetical: pnpm
+  // builds its whole store out of hard links, which makes a developer's
+  // node_modules exactly the folder this tool exists to analyse.
+  it("does not offer a hard link to the same file as a duplicate", () => {
+    const bytes = pattern(BIG, 11);
+    const original = plant(bytes, "linked");
+    const alias = join(dir, "alias-same-file.bin");
+    linkSync(original, alias);
+
+    assert.equal(statSync(original).nlink, 2, "the planted pair really is one file with two names");
+    assert.deepEqual(alikes([original, alias], BIG), [], "one file under two names must not be offered");
+
+    // And the figure the interface would print is zero rather than the size.
+    const onDisk = statSync(original).blocks * 512;
+    assert.equal(reclaimableBytes(alikes([original, alias], BIG), () => onDisk, () => false), 0);
+  });
+
+  // The case that would quietly inflate a real number: a genuinely duplicated
+  // file sitting beside a linked one. Only the names that each hold their own
+  // copies can be counted, so the saving is one copy rather than three.
+  it("counts only the names that each hold their own bytes, so the saving is one copy", () => {
+    const bytes = pattern(BIG, 33);
+    const original = plant(bytes, "linked");
+    const alias = join(dir, "alias-beside-copies.bin");
+    linkSync(original, alias);
+    const one = plant(bytes, "real");
+    const two = plant(bytes, "real");
+
+    const candidate = asCandidate([original, alias, one, two], BIG);
+    const groups = findDuplicates([candidate], { everyMs: 0 });
+
+    assert.equal(groups.length, 1, "the genuine pair is still found");
+    assert.deepEqual(groups[0].ids, candidate.ids.slice(2), "and the two linked names are not among them");
+
+    const onDisk = statSync(one).blocks * 512;
+    assert.equal(reclaimableBytes(groups, () => onDisk, () => false), onDisk, "one copy, because that is what deleting it frees");
   });
 });

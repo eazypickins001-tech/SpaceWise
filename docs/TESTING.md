@@ -47,7 +47,7 @@ It needs a build first, so the order is `npm run build && npm run smoke`. It is 
 
 ## What is covered
 
-Last verified run on this machine: **257 tests, 257 passed, 0 failed** (~7.2 s).
+Last verified run on this machine: **259 tests, 259 passed, 0 failed** (~7.4 s).
 
 | File | What it pins down |
 | --- | --- |
@@ -60,7 +60,7 @@ Last verified run on this machine: **257 tests, 257 passed, 0 failed** (~7.2 s).
 | `src/main/lister.test.ts` | The **real** directory lister, both implementations: entry counts, exact logical lengths, allocated size, a junction reported as a link and never as a folder, a hard link counted per name, non-ASCII and spaced names surviving the Win32 buffer, `.`/`..` never appearing, a missing folder and a file-as-folder returning an error rather than a silent zero, and a path over 260 characters |
 | `src/main/license-store.test.ts` | Persistence against a real file: a valid key is stored and read back, an invalid key is refused and **never written**, a damaged or empty token file leaves the free tier working, an expired licence is kept but unlocks nothing, the grace window, removal, and re-activation replacing rather than appending |
 | `src/main/scope.test.ts` | The policy every path-taking IPC handler shares: the scanned root and anything inside it are reachable, while a sibling folder, a traversal, a wildcard and an empty path are not; the scanned root may be a subject but never a target; and an operating-system folder or a credential store is refused **even when it is the scanned root**. That last group is the part that still holds under a compromised renderer, so it is asserted separately and named as such |
-| `src/main/dupfind.test.ts` | The duplicate finder against planted files: byte-identical copies grouped, and files differing in the first byte, the last byte, or **only in the middle** all kept apart. The middle case is what the two passes exist for, so the test first asserts that the cheap head-and-tail pass genuinely cannot tell those two apart, and only then that the full read can. Also the boundary at exactly twice the edge (where one pass suffices), the single byte left unread at the edge plus one, an unreadable file skipped rather than fatal, and a file whose length no longer matches the scan refused rather than judged on part of itself |
+| `src/main/dupfind.test.ts` | The duplicate finder against planted files: byte-identical copies grouped, and files differing in the first byte, the last byte, or **only in the middle** all kept apart. The middle case is what the two passes exist for, so the test first asserts that the cheap head-and-tail pass genuinely cannot tell those two apart, and only then that the full read can. Also the boundary at exactly twice the edge (where one pass suffices), the single byte left unread at the edge plus one, an unreadable file skipped rather than fatal, and a file whose length no longer matches the scan refused rather than judged on part of itself. Also a hard link to the same file: one file under two names is not a duplicate and must not be offered, the figure the interface would print for it is zero rather than its size, and when a genuinely duplicated file sits beside a linked one, only the names that each hold their own bytes are counted, so the saving is one copy and not three |
 | `src/shared/changed-since.test.ts` | The single guard behind every destructive action decided earlier: an unchanged file passes, and a file that is gone, unreadable, the wrong length or the wrong age does not. Also that the cleanup planner now refuses an item it cannot fingerprint rather than waving it through, which it previously did |
 | `src/main/scan-trash-agreement.test.ts` | The invariant the guard rests on: the length and modification time the scanner records are exactly what a fresh `lstat` reports, for the portable lister, the Windows bulk lister and the one that actually ships, at ordinary sizes and either side of a whole second |
 | `src/main/walk.test.ts` | The scan walk, against a fake disk and a real one: counts through nested folders, parents linked so the tree has a shape, links listed but never followed, a folder that cannot be listed flagged and explained while the rest of the walk carries on, a file that cannot be read recorded rather than dropped, batching still covering everything, stopping handing over what was measured and marking itself incomplete, and a real temporary tree walked with the production lister |
@@ -85,24 +85,23 @@ Highlights worth knowing about:
 
 This list is the honest gap. None of it has been run.
 
-- **No test drives the Electron application itself.** Nothing opens a window, and the scan
-  worker and the IPC handlers are exercised only through their pure parts. The cleanup
-  pipeline is covered against a real filesystem, but through a walker written inside the test
-  rather than through `scanworker`.
-- **The controlled-dataset protocol is only partly built.** A fixture tree with known sizes is
-  walked and its totals asserted to the byte; the real lister is covered for junctions, hard
-  links, non-ASCII names and paths over 260 characters; and the cleanup pipeline runs end to end
-  against a real tree. Still uncovered: **unreadable directories**, and a whole-tree walk through
-  `scanworker` itself rather than through a walker written inside the test.
-- **No hard-link double-counting test.** A file with several links is counted once per name.
-  This is inherited behaviour, disclosed in the interface, and unverified here.
-- **No cancellation-latency measurement.**
-- **No memory ceiling measurement** at large file counts. Roughly 60 bytes per file is the
-  design figure, not a measured one.
-- **No duplicate-detection test** against planted byte-identical files, and no test that
-  near-identical files are correctly *not* grouped.
-- **No clean-machine install, upgrade or uninstall test.**
-- **No signed-build verification**, because there is no signing certificate.
+- **Nothing drives the interface beyond the start screen.** The smoke test opens the real built
+  renderer with the real preload and the real policy, and runs the built scan worker against a
+  folder with a known answer, but it never gets past the opening screen. The Clean up tab, the
+  duplicate list, the history, the licence sheet and the summary sheet are covered by unit tests
+  over their pure parts and by nothing else. **This is the largest remaining gap:** a component
+  that throws when mounted with real scan data would ship unnoticed, and one of those was added
+  in the last round of work.
+- **No test opens a folder through the interface.** Picking a folder, dragging one in and the
+  drive list are untested end to end; every test starts a scan by calling the worker directly.
+- **Unreadable directories are covered in the walk and the lister, but not through
+  `scanworker`.** The folder the smoke test scans has no denied entries in it.
+- **The treemap is never painted.** Its layout arithmetic is measured and pinned by tests, but
+  the paint itself needs a canvas and has no automated check at all.
+- **No clean-machine install, upgrade or uninstall test**, and nothing checks that an update
+  actually applies once one is published.
+- **No signed-build verification**, because there is no signing certificate. Signing is
+  deliberately deferred, and the consequence is recorded in `SECURITY.md`.
 
 ## Manual Windows checklist
 

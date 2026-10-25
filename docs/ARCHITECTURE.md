@@ -84,7 +84,13 @@ Three properties, each pinned by a test:
 - a path over 260 characters is still readable, via the `\\?\` prefix;
 - a hard link is reported once per name. That is inherited behaviour and is disclosed in the
   interface rather than hidden, because it makes folders such as `WinSxS` look larger than the
-  bytes they uniquely own.
+  bytes they uniquely own. **The duplicate finder does not inherit it.** A name whose bytes are
+  shared with another name on disk is removed before a single byte is read, because deleting
+  one of those names frees nothing -- the other name still holds the file -- and offering the
+  pair would report a saving that would not happen. A path that cannot be examined is treated
+  the same way, so nothing is ever offered on the strength of a fact that could not be
+  established. pnpm builds its entire store from hard links, so this is ordinary rather than
+  exotic on the exact folders this tool is built to analyse.
 
 The two implementations are not identical, and the tests state where rather than pretending
 otherwise. On Windows the bulk path reports the real allocation, rounded up to a cluster, while
