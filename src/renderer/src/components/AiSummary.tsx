@@ -45,6 +45,9 @@ export function AiSummarySheet({ disk, findings, t, fmt, onClose, onLicence }: P
   const [baseUrl, setBaseUrl] = useState("");
   const [model, setModel] = useState("");
   const [apiKey, setApiKey] = useState("");
+  // Shown on the button after a save, because changing a model and seeing nothing
+  // happen is indistinguishable from a save that failed.
+  const [saved, setSaved] = useState(false);
 
   useEffect(() => {
     void window.api
@@ -89,6 +92,7 @@ export function AiSummarySheet({ disk, findings, t, fmt, onClose, onLicence }: P
   const save = useCallback(async (): Promise<void> => {
     const next = await window.api.aiConfigure({ baseUrl, model, apiKey });
     setStatus(next);
+    setSaved(true);
     setApiKey(""); // the key is never sent back, so there is nothing to keep in the field
   }, [baseUrl, model, apiKey]);
 
@@ -127,9 +131,9 @@ export function AiSummarySheet({ disk, findings, t, fmt, onClose, onLicence }: P
 
         {status === null && <p>{t("ai.checking")}</p>}
 
-        {status !== null && !status.configured && (
+        {status !== null && (
           <div style={{ marginTop: 8 }}>
-            <p style={{ fontSize: 12 }}>{t("ai.configNote")}</p>
+            {!status.configured && <p style={{ fontSize: 12 }}>{t("ai.configNote")}</p>}
             {status.problem && (
               <p className="dim" style={{ fontSize: 12, color: "var(--red, #b3261e)" }}>
                 {status.problem}
@@ -137,11 +141,11 @@ export function AiSummarySheet({ disk, findings, t, fmt, onClose, onLicence }: P
             )}
             <label style={{ display: "block", marginTop: 8 }}>
               {t("ai.baseUrl")}
-              <input className="input" value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} placeholder="https://…/v1" spellCheck={false} />
+              <input className="input" value={baseUrl} onChange={(e) => { setBaseUrl(e.target.value); setSaved(false); }} placeholder="https://…/v1" spellCheck={false} />
             </label>
             <label style={{ display: "block", marginTop: 6 }}>
               {t("ai.model")}
-              <input className="input" value={model} onChange={(e) => setModel(e.target.value)} spellCheck={false} />
+              <input className="input" value={model} onChange={(e) => { setModel(e.target.value); setSaved(false); }} spellCheck={false} />
             </label>
             <label style={{ display: "block", marginTop: 6 }}>
               {t("ai.key")}
@@ -149,13 +153,13 @@ export function AiSummarySheet({ disk, findings, t, fmt, onClose, onLicence }: P
                 className="input"
                 type="password"
                 value={apiKey}
-                onChange={(e) => setApiKey(e.target.value)}
+                onChange={(e) => { setApiKey(e.target.value); setSaved(false); }}
                 placeholder={status.hasKey ? t("ai.keyKept") : ""}
                 spellCheck={false}
               />
             </label>
             <button className="btn primary" style={{ marginTop: 8 }} onClick={() => void save()}>
-              {t("ai.save")}
+              {saved ? t("ai.saved") : t("ai.save")}
             </button>
           </div>
         )}
