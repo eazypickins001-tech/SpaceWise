@@ -66,14 +66,36 @@ export function endpointProblem(baseUrl: string): string | null {
   return "the address has to start with https://";
 }
 
+// The model field holds one or more models, one per line (a comma works too).
+//
+// A list is the difference between a feature that works and a feature that
+// explains itself. Free and self-hosted endpoints disappear, rate-limit and
+// come back, and the person asking for a summary wants the summary, not a
+// report about a provider. When the first model refuses, the next is asked
+// instead, and only a list that entirely fails is reported as a failure.
+export function modelList(settings: AiSettings): string[] {
+  const parts = String(settings.model ?? "").split(/[\n,]+/);
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const part of parts) {
+    const name = part.trim();
+    if (name === "" || seen.has(name)) continue;
+    seen.add(name);
+    out.push(name);
+  }
+  return out;
+}
+
 export function aiConfigured(settings: AiSettings): boolean {
-  return endpointProblem(settings.baseUrl) === null && settings.model.trim() !== "" && settings.apiKey.trim() !== "";
+  return endpointProblem(settings.baseUrl) === null && modelList(settings).length > 0 && settings.apiKey.trim() !== "";
 }
 
 export interface SummaryOutcome {
   ok: boolean;
   text: string;
   error: string;
+  // Which model produced the text, when one did.
+  model?: string;
   // How much was sent, so the interface can say so afterwards.
   bytes: number;
 }
@@ -97,7 +119,6 @@ const MAX_DETAIL = 300;
 // identical and perfectly well formed. That is not a bad request, and treating
 // it as one turns a flaky provider into a dead end for the person.
 const RETRYABLE_STATUS = new Set([408, 429, 500, 502, 503, 504]);
-const MAX_ATTEMPTS = 3;
 const RETRY_PAUSE_MS = 500;
 
 // The status is usually enough. It is not for OpenRouter, which answers
@@ -161,10 +182,11 @@ export async function requestSummary(
   }
 
   const url = settings.baseUrl.trim().replace(/\/+$/, "") + "/chat/completions";
+  const models = modelList(settings);
 
-  // One attempt, kept separate so that a failure from upstream can be tried
-  // again without repeating the checks above.
-  const once = async (): Promise<{ outcome: SummaryOutcome; retryable: boolean }> => {
+  // One attempt at one model, kept separate so that a refusal can be answered by
+  // asking a different model rather than by repeating the checks above.
+  const once = async (model: string): Promise<{ outcome: SummaryOutcome; retryable: boolean }> => {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     let response: Response;
@@ -174,7 +196,7 @@ export async function requestSummary(
         headers: { "content-type": "application/json", authorization: `Bearer ${settings.apiKey.trim()}` },
         signal: controller.signal,
         body: JSON.stringify({
-          model: settings.model.trim(),
+          model,
           messages: [
             { role: "system", content: SUMMARY_SYSTEM_PROMPT },
             { role: "user", content: body },
@@ -188,7 +210,7 @@ export async function requestSummary(
       const why = controller.signal.aborted
         ? `the endpoint did not answer within ${timeoutMs / 1000} s`
         : `could not reach the endpoint: ${String((err as Error)?.message ?? err)}`;
-      // A connection that failed is worth one more try. A timeout is not: the
+      // A connection that failed is worth another go. A timeout is not: the
       // endpoint has already had its whole allowance.
       return { outcome: { ok: false, text: "", error: why, bytes: size }, retryable: !controller.signal.aborted };
     }
@@ -232,9 +254,9 @@ export async function requestSummary(
       const text = reply?.content;
       if (typeof text !== "string" || text.trim() === "") {
         // A reasoning model can answer happily and put everything in a separate
-        // field, leaving the answer empty. That is worth saying, because it is
-        // the difference between "your request was wrong" and "this model does
-        // not answer the way this feature needs".
+        // field, leaving the answer empty. That is worth saying, because it is the
+        // difference between a request that was wrong and a model that does not
+        // answer the way this feature needs.
         const onlyReasoning = typeof reply?.reasoning === "string" && reply.reasoning.trim() !== "";
         return {
           outcome: {
@@ -248,26 +270,40 @@ export async function requestSummary(
           retryable: false,
         };
       }
-      return { outcome: { ok: true, text: text.trim(), error: "", bytes: size }, retryable: false };
+      return { outcome: { ok: true, text: text.trim(), error: "", bytes: size, model }, retryable: false };
     } catch {
       return { outcome: { ok: false, text: "", error: "the reply was not readable", bytes: size }, retryable: false };
     }
   };
 
-  let outcome: SummaryOutcome = { ok: false, text: "", error: "no attempt was made", bytes: size };
+  let last: SummaryOutcome = { ok: false, text: "", error: "no model was tried", bytes: size };
+  let retryable = false;
   let tries = 0;
-  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-    tries = attempt;
-    const tried = await once();
-    if (tried.outcome.ok) return tried.outcome;
-    outcome = tried.outcome;
-    if (!tried.retryable || attempt === MAX_ATTEMPTS) break;
-    await new Promise((r) => setTimeout(r, RETRY_PAUSE_MS * attempt));
+
+  // Two rounds over the list. Asking the next model is a better use of the wait
+  // than repeating the one that just failed, so the first round asks each model
+  // once and the second only happens if something looked like it might recover.
+  for (let round = 1; round <= 2; round++) {
+    if (round === 2 && !retryable) break;
+    let recovered = false;
+    for (const model of models) {
+      tries++;
+      const tried = await once(model);
+      if (tried.outcome.ok) return tried.outcome;
+      last = tried.outcome;
+      if (tried.retryable) recovered = true;
+      await new Promise((r) => setTimeout(r, RETRY_PAUSE_MS));
+    }
+    retryable = recovered;
   }
 
-  // Say that it was tried more than once, so that an unreliable provider reads
-  // as unreliable rather than as something the person got wrong.
-  return tries > 1 ? { ...outcome, error: `${outcome.error} (after ${tries} attempts)` } : outcome;
+  // Say how much was tried, so that a list which fails entirely reads as
+  // everything having been attempted rather than as one model being broken.
+  const suffix =
+    tries > 1
+      ? ` (after ${tries} attempts with ${models.length} model${models.length === 1 ? "" : "s"})`
+      : "";
+  return { ...last, error: last.error + suffix };
 }
 
 // What the interface is allowed to know about the settings. The key itself is

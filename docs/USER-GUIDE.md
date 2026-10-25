@@ -33,7 +33,9 @@ build that runs without installing anything, described below.
 
 1. Run the installer. It installs for **your account only**, so it does not need administrator
    rights, and it lets you choose the folder. The default is under your own user folder, in
-   `AppData\Local\Programs\SpaceWise`.
+   `AppData\Local\Programs\SpaceWise`. It creates a **desktop shortcut and a Start Menu
+   entry**, both called SpaceWise. If you would rather not have the desktop one, delete it —
+   the Start Menu entry is enough to launch it, and the application does not care either way.
 2. **Windows will warn you the first time you run it.** It will show a blue box saying
    *"Windows protected your PC"*, because the application is not signed with a paid certificate
    yet. Click **More info**, then **Run anyway**. This is what an unsigned application looks
@@ -42,7 +44,9 @@ build that runs without installing anything, described below.
 3. There is no licence to accept, no account to create, and nothing to sign in to.
 
 **The portable version** is `SpaceWise-0.1.0-x64.exe`. It needs no installation and leaves no
-installer behind — useful for a USB stick or a machine you do not want to change. Your settings
+installer behind — useful for a USB stick or a machine you do not want to change. It also
+creates no shortcut and no Start Menu entry, because it does not install anything; if you want
+a shortcut, use the installer. Your settings
 and scan history are still kept in your user folder, so it is not fully self-contained.
 
 ### Updating
@@ -150,7 +154,11 @@ Clean up tab:
 
 - an **address**. Anything on the internet must be `https`. A model running on your own computer
   may use `http://127.0.0.1` with whatever port it listens on, and then nothing leaves the machine.
-- a **model name**, as your endpoint expects it.
+- one or more **model names**, one per line, as your endpoint spells them. If the first cannot
+  answer — a provider having a bad day, a rate limit, a model withdrawn — the next is tried
+  automatically and you are told nothing about it. The first that answers is the one used, and
+  the result says which that was. Listing two or three is the difference between a feature that
+  works when one provider is down and one that does not.
 - an **API key**, if your endpoint wants one. It is stored in your own user folder, never in the
   program.
 

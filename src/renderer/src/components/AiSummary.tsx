@@ -11,7 +11,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { buildSummaryPayload, relativeLabel } from "../../../shared/ai-summary";
 import type { SummaryFact } from "../../../shared/ai-summary";
-import type { AiStatusState } from "../../../shared/types";
+import type { AiStatusState, AiSummaryResult } from "../../../shared/types";
 import type { Finding } from "../../../shared/storage-intelligence";
 import { byType } from "../lib/analysis";
 import type { Disk } from "../lib/disk";
@@ -40,7 +40,7 @@ export function AiSummarySheet({ disk, findings, t, fmt, onClose, onLicence }: P
   // Off unless asked for. The person decides whether names travel.
   const [names, setNames] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [result, setResult] = useState<{ ok: boolean; text: string; error: string } | null>(null);
+  const [result, setResult] = useState<AiSummaryResult | null>(null);
 
   const [baseUrl, setBaseUrl] = useState("");
   const [model, setModel] = useState("");
@@ -103,7 +103,7 @@ export function AiSummarySheet({ disk, findings, t, fmt, onClose, onLicence }: P
       const out = await window.api.aiSummarise(payload.text);
       setResult(out);
     } catch (err) {
-      setResult({ ok: false, text: "", error: String((err as Error)?.message ?? err) });
+      setResult({ ok: false, text: "", error: String((err as Error)?.message ?? err), bytes: 0 });
     } finally {
       setBusy(false);
     }
@@ -145,8 +145,17 @@ export function AiSummarySheet({ disk, findings, t, fmt, onClose, onLicence }: P
             </label>
             <label style={{ display: "block", marginTop: 6 }}>
               {t("ai.model")}
-              <input className="input" value={model} onChange={(e) => { setModel(e.target.value); setSaved(false); }} spellCheck={false} />
+              <textarea
+                className="input"
+                rows={3}
+                value={model}
+                onChange={(e) => { setModel(e.target.value); setSaved(false); }}
+                spellCheck={false}
+              />
             </label>
+            <p className="dim" style={{ fontSize: 12 }}>
+              {t("ai.modelsHint")}
+            </p>
             <label style={{ display: "block", marginTop: 6 }}>
               {t("ai.key")}
               <input
@@ -202,6 +211,7 @@ export function AiSummarySheet({ disk, findings, t, fmt, onClose, onLicence }: P
                     <p style={{ whiteSpace: "pre-wrap" }}>{result.text}</p>
                     <p className="dim" style={{ fontSize: 12 }}>
                       {t("ai.resultNote")}
+                      {result.model ? " " + t("ai.answeredBy", { model: result.model }) : ""}
                     </p>
                   </>
                 ) : (

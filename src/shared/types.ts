@@ -119,6 +119,10 @@ export interface AiSummaryResult {
   error: string;
   // How much was sent, so the interface can say so afterwards.
   bytes: number;
+  // Which model produced the text, when one did. Several may be configured and
+  // the first that answers is used, so saying which one is a matter of honesty
+  // rather than of detail.
+  model?: string;
 }
 
 // What a caller believed about a file when it asked for it to be removed.

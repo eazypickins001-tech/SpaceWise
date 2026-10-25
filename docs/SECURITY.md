@@ -135,6 +135,12 @@ stated here rather than left to the code.
 - **The address it may reach is constrained.** Anything remote must be `https`; plain `http` is
   accepted only on the loopback address, so a model on this machine can be used without a
   certificate and nothing else can be.
+- **More than one model can be configured, and any of them may be the one that answers.** If the
+  list holds models from different companies, the message can reach the second company because
+  the first was unavailable. That is the intended behaviour, and it is why the list is typed by
+  the person rather than shipped with the application: it is a list of places they are content
+  to send this text. It is recorded here because a fallback that changes who receives the data
+  is a privacy decision, not only a reliability one.
 - **The key stays in the main process.** The interface is told whether a key exists, never what
   it is, and the settings file is written owner-only.
 - **The message is capped in size** (8 KiB) as well as in findings and types, so a scan of a

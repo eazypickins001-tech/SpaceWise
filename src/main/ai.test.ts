@@ -8,7 +8,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, describe, it } from "node:test";
 import { SUMMARY_SYSTEM_PROMPT } from "../shared/ai-summary";
-import { aiConfigured, aiStatus, endpointProblem, readAiSettings, requestSummary, settingsPathIn, writeAiSettings } from "./ai";
+import { aiConfigured, aiStatus, endpointProblem, modelList, readAiSettings, requestSummary, settingsPathIn, writeAiSettings } from "./ai";
 import type { AiSettings } from "./ai";
 
 const dir = mkdtempSync(join(tmpdir(), "spacewise-ai-"));
@@ -51,6 +51,7 @@ function startServer(reply: (seen: Seen) => { status: number; body: string }) {
 const completion = (text: string): string => JSON.stringify({ choices: [{ message: { content: text } }] });
 
 const settingsFor = (baseUrl: string): AiSettings => ({ baseUrl, model: "a-model", apiKey: "a-key" });
+const settings = (model: string): AiSettings => ({ baseUrl: "https://x/v1", model, apiKey: "k" });
 
 describe("where a summary may be sent", () => {
   it("refuses to send anything until an endpoint is given", () => {
@@ -293,7 +294,7 @@ describe("requestSummary: trying again when the failure came from upstream", () 
     let calls = 0;
     const server = await startServer(() => {
       calls++;
-      return calls < 3
+      return calls < 2
         ? { status: 400, body: JSON.stringify({ error: { message: "Provider returned error" } }) }
         : { status: 200, body: completion("Recovered.") };
     });
@@ -301,7 +302,7 @@ describe("requestSummary: trying again when the failure came from upstream", () 
       const out = await requestSummary("hello", settingsFor(server.url));
       assert.equal(out.ok, true, "a transient failure upstream must not be the end of it");
       assert.equal(out.text, "Recovered.");
-      assert.equal(server.seen.length, 3, "and the endpoint should have been asked again");
+      assert.equal(server.seen.length, 2, "and the endpoint should have been asked again");
     } finally {
       await server.close();
     }
@@ -329,7 +330,7 @@ describe("requestSummary: trying again when the failure came from upstream", () 
       const out = await requestSummary("hello", settingsFor(server.url));
       assert.equal(out.ok, false);
       assert.match(out.error, /answered 503/);
-      assert.match(out.error, /after 3 attempts/, "an unreliable endpoint should read as unreliable, not as a mistake");
+      assert.match(out.error, /after 2 attempts/, "an unreliable endpoint should read as unreliable, not as a mistake");
     } finally {
       await server.close();
     }
@@ -364,6 +365,79 @@ describe("requestSummary: a reply that answered but said nothing", () => {
       const out = await requestSummary("hello", settingsFor(server.url));
       assert.match(out.error, /no text in it/);
       assert.ok(!/reasoning/.test(out.error), "nothing was said about reasoning, so nothing is claimed");
+    } finally {
+      await server.close();
+    }
+  });
+});
+
+describe("the model list", () => {
+  // Several models, so that one provider being unavailable is a non-event. All a
+  // person asking for a summary wants is the summary.
+  it("reads one model per line", () => {
+    assert.deepEqual(modelList(settings("a\nb\nc")), ["a", "b", "c"]);
+  });
+
+  it("accepts a comma as well, and ignores surrounding space", () => {
+    assert.deepEqual(modelList(settings("  a , b\n  c  ")), ["a", "b", "c"]);
+  });
+
+  it("drops blanks and repeats, which would otherwise be asked twice", () => {
+    assert.deepEqual(modelList(settings("\n\na\n\n a \nb\n")), ["a", "b"]);
+    assert.deepEqual(modelList(settings("")), []);
+    assert.deepEqual(modelList(settings("   ")), []);
+  });
+
+  it("is not configured by a list that has no names in it", () => {
+    assert.equal(aiConfigured({ baseUrl: "https://x/v1", model: "  \n ", apiKey: "k" }), false);
+  });
+});
+
+describe("requestSummary: falling back to the next model", () => {
+  it("asks the next model when the first refuses, and says which answered", async () => {
+    const server = await startServer((seen) => {
+      const asked = (JSON.parse(seen.body) as { model: string }).model;
+      if (asked === "first-model") {
+        return { status: 400, body: JSON.stringify({ error: { message: "Provider returned error" } }) };
+      }
+      return { status: 200, body: completion("from the second model") };
+    });
+    try {
+      const out = await requestSummary("hello", { ...settingsFor(server.url), model: "first-model\nsecond-model" });
+      assert.equal(out.ok, true, "one unavailable provider must not stop the summary");
+      assert.equal(out.text, "from the second model");
+      assert.equal(out.model, "second-model", "and the interface can say which one answered");
+      assert.equal(server.seen.length, 2, "the first was asked once and then left alone");
+    } finally {
+      await server.close();
+    }
+  });
+
+  // The same, for the model that answers 200 with nothing usable in it.
+  it("moves on from a model that replied with only its reasoning", async () => {
+    const server = await startServer((seen) => {
+      const asked = (JSON.parse(seen.body) as { model: string }).model;
+      if (asked === "thinks-but-says-nothing") {
+        return { status: 200, body: JSON.stringify({ choices: [{ message: { content: "", reasoning: "hmm" } }] }) };
+      }
+      return { status: 200, body: completion("a real answer") };
+    });
+    try {
+      const out = await requestSummary("hello", { ...settingsFor(server.url), model: "thinks-but-says-nothing\nworks" });
+      assert.equal(out.ok, true);
+      assert.equal(out.model, "works");
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("reports the whole list as tried when none of them answers", async () => {
+    const server = await startServer(() => ({ status: 400, body: JSON.stringify({ error: { message: "not a valid model ID" } }) }));
+    try {
+      const out = await requestSummary("hello", { ...settingsFor(server.url), model: "a\nb\nc" });
+      assert.equal(out.ok, false);
+      assert.match(out.error, /3 models/, "so that it reads as everything having been tried");
+      assert.equal(server.seen.length, 3, "and a refusal about the request is not repeated for each model");
     } finally {
       await server.close();
     }
