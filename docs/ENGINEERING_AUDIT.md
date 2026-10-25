@@ -6,8 +6,8 @@ passing unless it was observed to pass.
 
 - Audit date: 2026-10-24
 - Auditor: automated engineering session (Command Code)
-- Audit workspace: `C:\Users\Apple\Downloads\Telegram Desktop\UoK\_spacewise-audit\`
-- Product repository: `C:\Users\Apple\Downloads\Telegram Desktop\UoK\SpaceWise\`
+- Audit workspace: `_spacewise-audit\` -- a sibling of the product repository, and outside it
+- Product repository: `SpaceWise\` -- the directory this document sits in
 
 ---
 
