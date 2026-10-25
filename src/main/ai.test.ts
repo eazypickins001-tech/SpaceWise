@@ -229,3 +229,58 @@ describe("asking for a summary", () => {
     }
   });
 });
+
+describe("requestSummary: what it reports when the endpoint refuses", () => {
+  // A refused request is the common failure in practice, and the status code on
+  // its own does not say what to fix. Providers put the reason in the body, so
+  // the body is carried through rather than thrown away.
+  it("carries the provider's own explanation, not just the status", async () => {
+    const server = await startServer(() => ({
+      status: 400,
+      body: JSON.stringify({ error: { message: "gpt-nonsense is not a valid model ID", type: "invalid_request_error" } }),
+    }));
+    try {
+      const out = await requestSummary("hello", settingsFor(server.url));
+      assert.equal(out.ok, false);
+      assert.match(out.error, /answered 400/);
+      assert.match(out.error, /gpt-nonsense is not a valid model ID/, "the reason has to reach the interface to be any use");
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("still says something when the refusal is not JSON", async () => {
+    const server = await startServer(() => ({ status: 502, body: "<html><body>Bad gateway</body></html>" }));
+    try {
+      const out = await requestSummary("hello", settingsFor(server.url));
+      assert.match(out.error, /answered 502/);
+      assert.match(out.error, /Bad gateway/);
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("bounds a refusal that answers with a wall of text", async () => {
+    const server = await startServer(() => ({ status: 500, body: "x".repeat(20000) }));
+    try {
+      const out = await requestSummary("hello", settingsFor(server.url));
+      assert.ok(out.error.length < 600, `the message is displayed, so it stays short; got ${out.error.length} characters`);
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("gives up waiting rather than asking forever", async () => {
+    // An endpoint that accepts the connection and then never answers. The limit
+    // is passed in so that proving this does not take two minutes.
+    const never: typeof fetch = (_url, init) =>
+      new Promise((_resolve, reject) => {
+        (init?.signal as AbortSignal | undefined)?.addEventListener("abort", () =>
+          reject(Object.assign(new Error("aborted"), { name: "AbortError" })),
+        );
+      });
+    const out = await requestSummary("hello", settingsFor("http://127.0.0.1:9/v1"), never, 30);
+    assert.equal(out.ok, false);
+    assert.match(out.error, /did not answer within/);
+  });
+});

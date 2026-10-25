@@ -80,10 +80,48 @@ export interface SummaryOutcome {
 
 const MAX_REPLY_BYTES = 16 * 1024;
 
+// A ceiling on waiting, not an expectation. Without it an endpoint that accepts
+// the connection and then never answers leaves the sheet saying "asking"
+// forever, with no way out but closing it.
+const SUMMARY_TIMEOUT_MS = 120_000;
+
+// An error reply is displayed, so it is bounded. Providers put the useful part
+// first, and a wall of text is not an explanation.
+const MAX_DETAIL = 300;
+
+// Whatever the endpoint said when it refused, in one line.
+//
+// Most providers answer with JSON carrying a message -- OpenRouter and OpenAI
+// both put theirs at error.message -- and a provider that answers with plain
+// text is no less informative for it. Reporting the status alone, as this did at
+// first, leaves someone looking at "400" with no way to find out what was wrong
+// with a request that was, after all, accepted by the network.
+function explain(raw: string): string {
+  const text = raw.trim();
+  if (text === "") return "";
+  let message = text;
+  try {
+    const parsed = JSON.parse(text) as { error?: unknown; message?: unknown };
+    const inner =
+      typeof parsed.error === "object" && parsed.error !== null
+        ? (parsed.error as { message?: unknown }).message
+        : parsed.error;
+    const candidate = typeof inner === "string" ? inner : parsed.message;
+    if (typeof candidate === "string" && candidate.trim() !== "") message = candidate.trim();
+  } catch {
+    // Not JSON. The text itself is the explanation.
+  }
+  const flat = message.replace(/\s+/g, " ").trim();
+  return flat.length > MAX_DETAIL ? `${flat.slice(0, MAX_DETAIL)}…` : flat;
+}
+
 export async function requestSummary(
   message: string,
   settings: AiSettings,
   fetchImpl: typeof fetch = fetch,
+  // Injectable so that the wait can be tested without waiting two minutes. It is
+  // here for the same reason `fetchImpl` is.
+  timeoutMs: number = SUMMARY_TIMEOUT_MS,
 ): Promise<SummaryOutcome> {
   const problem = endpointProblem(settings.baseUrl);
   if (problem !== null) return { ok: false, text: "", error: problem, bytes: 0 };
@@ -102,10 +140,13 @@ export async function requestSummary(
   }
 
   const url = settings.baseUrl.trim().replace(/\/+$/, "") + "/chat/completions";
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
   let response: Response;
   try {
     response = await fetchImpl(url, {
       method: "POST",
+      signal: controller.signal,
       headers: { "content-type": "application/json", authorization: `Bearer ${settings.apiKey.trim()}` },
       body: JSON.stringify({
         model: settings.model.trim(),
@@ -118,10 +159,32 @@ export async function requestSummary(
       }),
     });
   } catch (err) {
-    return { ok: false, text: "", error: `could not reach the endpoint: ${String((err as Error)?.message ?? err)}`, bytes: size };
+    clearTimeout(timer);
+    const why = controller.signal.aborted
+      ? `the endpoint did not answer within ${timeoutMs / 1000} s`
+      : `could not reach the endpoint: ${String((err as Error)?.message ?? err)}`;
+    return { ok: false, text: "", error: why, bytes: size };
   }
 
-  if (!response.ok) return { ok: false, text: "", error: `the endpoint answered ${response.status}`, bytes: size };
+  clearTimeout(timer);
+
+  if (!response.ok) {
+    // The provider's own explanation is the most useful thing on this path, so
+    // it is carried through rather than replaced by the status code. Nothing is
+    // guessed at: whatever the endpoint said is shown, bounded.
+    let detail = "";
+    try {
+      detail = explain(await response.text());
+    } catch {
+      // Nothing readable came back, so the status is all there is to report.
+    }
+    return {
+      ok: false,
+      text: "",
+      error: `the endpoint answered ${response.status}${detail === "" ? "" : `: ${detail}`}`,
+      bytes: size,
+    };
+  }
 
   let raw: string;
   try {
