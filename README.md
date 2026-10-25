@@ -169,6 +169,7 @@ docs            engineering audit, architecture, security, testing, licensing, r
 
 ## Documentation
 
+- `docs/USER-GUIDE.md` — for people using the application rather than working on it: installing, scanning, cleaning up safely, and the known limitations
 - `docs/ENGINEERING_AUDIT.md` — what was audited, what was measured, what was chosen and why
 - `docs/ARCHITECTURE.md` — how the pieces fit together
 - `docs/SECURITY.md` — the threat model and the controls
