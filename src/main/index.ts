@@ -17,7 +17,7 @@ import { activateLicense, clearLicense, licenseStatus } from "./license-store";
 import type { LicenseStore } from "./license-store";
 import { hasFeature } from "../shared/entitlements";
 import type { LicenseState } from "../shared/entitlements";
-import { aiStatus, readAiSettings, requestSummary, settingsPathIn, writeAiSettings } from "./ai";
+import { aiStatus, readAiSettings, requestAdvice, requestSummary, settingsPathIn, writeAiSettings } from "./ai";
 import type { AiSettings } from "./ai";
 import { buildAuditRecord, buildPlan, changedSince, normalizePath, revalidate } from "../shared/cleanup";
 import type { Action, AuditRecord, Candidate, CleanupPlan, FsProbe, ItemOutcome } from "../shared/cleanup";
@@ -530,6 +530,15 @@ ipcMain.handle("ai:summarise", async (_e, message: string): Promise<AiSummaryRes
     return { ok: false, text: "", error: "a licence is needed for this", bytes: 0 };
   }
   return requestSummary(String(message ?? ""), readAiSettings(aiSettingsFile()));
+});
+
+// A question about one folder. Same licence gate, same ceiling, same settings;
+// the difference is only which standing instructions are sent with it.
+ipcMain.handle("ai:ask", async (_e, message: string): Promise<AiSummaryResult> => {
+  if (!hasFeature(licenseStatus(licenseStore()), "ai.summary")) {
+    return { ok: false, text: "", error: "a licence is needed for this", bytes: 0 };
+  }
+  return requestAdvice(String(message ?? ""), readAiSettings(aiSettingsFile()));
 });
 
 // Shell -------------------------------------------------------------------

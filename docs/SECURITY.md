@@ -130,6 +130,12 @@ stated here rather than left to the code.
   (`src/shared/ai-summary.ts`) from the findings the deterministic rules already produced. It
   contains no file contents, no absolute path, and no name at all unless the person ticks the
   box for names. That exact text is displayed, verbatim, above the button that sends it.
+- **The same bounds apply to asking about one folder.** The item-anchored chat sends the rules'
+  own words about that item -- why it was flagged, what they say happens if it goes, and what
+  the category is -- plus the question and the last few turns. It sends nothing else, it obeys
+  the same name toggle, and the standing instructions for it forbid saying whether anything is
+  safe to delete and forbid implying it has read the folder. The facts shown on screen are the
+  facts sent.
 - **It cannot select or delete anything.** There is no code path from the summary to an action.
   It returns prose, which is drawn beside the findings and nowhere else.
 - **The address it may reach is constrained.** Anything remote must be `https`; plain `http` is

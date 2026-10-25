@@ -9,7 +9,7 @@
 // this can be tested, including the request, against a local server.
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { SUMMARY_MAX_BYTES, SUMMARY_SYSTEM_PROMPT } from "../shared/ai-summary";
+import { CHAT_SYSTEM_PROMPT, SUMMARY_MAX_BYTES, SUMMARY_SYSTEM_PROMPT } from "../shared/ai-summary";
 
 export interface AiSettings {
   baseUrl: string;
@@ -164,6 +164,10 @@ export async function requestSummary(
   // Injectable so that the wait can be tested without waiting two minutes. It is
   // here for the same reason `fetchImpl` is.
   timeoutMs: number = SUMMARY_TIMEOUT_MS,
+  // Which standing instructions apply. The summary and the item-anchored chat
+  // need different ones, and the difference is the point: one describes a scan,
+  // the other explains a folder without deciding anything about it.
+  systemPrompt: string = SUMMARY_SYSTEM_PROMPT,
 ): Promise<SummaryOutcome> {
   const problem = endpointProblem(settings.baseUrl);
   if (problem !== null) return { ok: false, text: "", error: problem, bytes: 0 };
@@ -198,7 +202,7 @@ export async function requestSummary(
         body: JSON.stringify({
           model,
           messages: [
-            { role: "system", content: SUMMARY_SYSTEM_PROMPT },
+            { role: "system", content: systemPrompt },
             { role: "user", content: body },
           ],
           max_tokens: 400,
@@ -304,6 +308,13 @@ export async function requestSummary(
       ? ` (after ${tries} attempts with ${models.length} model${models.length === 1 ? "" : "s"})`
       : "";
   return { ...last, error: last.error + suffix };
+}
+
+// Asking about one folder. Same transport, same ceiling, same licence gate --
+// only the standing instructions differ, because the model is being asked to
+// explain the rules rather than to describe a scan.
+export function requestAdvice(message: string, settings: AiSettings): Promise<SummaryOutcome> {
+  return requestSummary(message, settings, fetch, SUMMARY_TIMEOUT_MS, CHAT_SYSTEM_PROMPT);
 }
 
 // What the interface is allowed to know about the settings. The key itself is

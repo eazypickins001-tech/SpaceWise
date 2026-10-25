@@ -8,13 +8,14 @@
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import type { CategoryId, Finding, Risk } from "../../../shared/storage-intelligence";
-import { analyzeStorage, summarize } from "../../../shared/storage-intelligence";
+import { CATEGORIES, analyzeStorage, summarize } from "../../../shared/storage-intelligence";
 import { actionLabel } from "../../../shared/cleanup";
 import type { AuditRecord, CleanupPlan, CleanupRunResult } from "../../../shared/cleanup";
 import type { Fmt, T } from "../lib/i18n";
 import type { PaneProps } from "./Panels";
 import { Icon } from "./Icon";
 import { AiSummarySheet } from "./AiSummary";
+import { ChatSheet } from "./Chat";
 import { Sheet } from "./Sheet";
 
 const GRID = "minmax(0, 1fr) 96px 86px 34px";
@@ -56,6 +57,8 @@ export const CleanupPane = memo(function CleanupPane(p: PaneProps & { onRemoved:
   const [problem, setProblem] = useState<string | null>(null);
   // The optional summary is opened by hand, never on its own.
   const [summaryOpen, setSummaryOpen] = useState(false);
+  // Which finding the assistant is being asked about, by id.
+  const [chat, setChat] = useState<number | null>(null);
 
   const openHistory = async (): Promise<void> => {
     try {
@@ -241,6 +244,14 @@ export const CleanupPane = memo(function CleanupPane(p: PaneProps & { onRemoved:
                         <Icon name="folder" className="glyph" />
                         <span className="text">{disk.name(id)}</span>
                         <span className="sub">{f.reason}</span>
+                        <button
+                          className="btn quiet"
+                          style={{ marginLeft: 8, fontSize: 11, padding: "0 6px" }}
+                          title={t("ai.askTitle")}
+                          onClick={() => setChat(id)}
+                        >
+                          {t("ai.askAbout")}
+                        </button>
                       </div>
                       <div className="dim" style={{ padding: "0 8px", fontSize: 12 }}>
                         {g.def.regeneration}
@@ -322,6 +333,21 @@ export const CleanupPane = memo(function CleanupPane(p: PaneProps & { onRemoved:
             <p>{t("cleanup.planItems", { count: fmt.count(step.plan.items.length), bytes: fmt.bytes(step.plan.estimatedBytes) })}</p>
           </div>
         </Sheet>
+      )}
+
+      {chat !== null && byId.get(chat) && (
+        <ChatSheet
+          disk={disk}
+          finding={byId.get(chat)!}
+          category={CATEGORIES[byId.get(chat)!.category] ?? null}
+          t={t}
+          fmt={fmt}
+          onClose={() => setChat(null)}
+          onLicence={() => {
+            setChat(null);
+            onLicence();
+          }}
+        />
       )}
 
       {summaryOpen && (

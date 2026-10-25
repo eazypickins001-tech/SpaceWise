@@ -84,6 +84,7 @@ const api = {
     ipcRenderer.invoke("ai:configure", settings),
   // Handed the exact text that was shown for approval, and nothing else.
   aiSummarise: (message: string): Promise<AiSummaryResult> => ipcRenderer.invoke("ai:summarise", message),
+  aiAsk: (message: string): Promise<AiSummaryResult> => ipcRenderer.invoke("ai:ask", message),
 
   copyText: (text: string): Promise<void> => ipcRenderer.invoke("clipboard:write", text),
 

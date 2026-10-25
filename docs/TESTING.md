@@ -47,7 +47,7 @@ It needs a build first, so the order is `npm run build && npm run smoke`. It is 
 
 ## What is covered
 
-Last verified run on this machine: **275 tests, 275 passed, 0 failed** (~9.0 s).
+Last verified run on this machine: **285 tests, 285 passed, 0 failed** (~9.5 s).
 
 | File | What it pins down |
 | --- | --- |

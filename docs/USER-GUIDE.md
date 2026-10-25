@@ -173,7 +173,14 @@ described as a drive.
 beside your findings. There is no path from that text to an action. The message is capped in size,
 so a scan of a million files produces a short message rather than a dump.
 
-This needs a paid licence.
+**Asking about one folder.** Next to any finding in the Clean up tab there is an **Ask** button.
+It opens a sheet that states, from the application's own rules, what the folder is, why it was
+flagged and what happens if it goes — and that part needs nothing from the assistant and is
+shown whether or not you have configured one. Below it you can ask follow-up questions in
+words, and the assistant answers using those same facts. It cannot see inside the folder, it
+will not tell you whether to delete anything, and the verdicts stay with the rules.
+
+This also needs a paid licence.
 
 ---
 
