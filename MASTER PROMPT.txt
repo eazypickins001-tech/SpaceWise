@@ -1,0 +1,610 @@
+# SPACEWISE: MASTER ENGINEERING AND PRODUCT BUILD PROMPT
+
+## 1. Your role and mission
+
+Act as a senior desktop software architect, Windows systems engineer, security-conscious product developer, and open-source engineering lead.
+
+Your task is to build **SpaceWise**, a commercial-ready, local-first Windows storage intelligence and safe PC maintenance application.
+
+Do not begin by building everything from scratch. First audit the candidate open-source repositories, determine which code is suitable for reuse, run the available tests and builds, and select the strongest foundation based on evidence.
+
+Then create a separate SpaceWise application and repository. Preserve required licenses and notices. Build a reliable, usable product rather than a demo that merely looks complete.
+
+Work independently through routine implementation decisions. Do not stop to ask for approval after every phase. Stop only when a decision genuinely requires my input, a destructive or irreversible action is being considered, credentials are required, or an external service must be configured.
+
+**Critical rule:** Never claim a test passed, a build succeeded, a repository was audited, or a feature works unless you actually verified it.
+
+## 2. Product vision
+
+SpaceWise helps Windows users understand their storage, identify what is consuming space, determine what can be safely reclaimed, and monitor storage growth over time.
+
+The positioning is:
+
+"Understand your storage. Reclaim space safely. Keep your PC organized."
+
+This is not a generic one-click cleaner, registry optimizer, or scareware application.
+
+The product must explain what it finds, why a recommendation exists, how much space could potentially be recovered, and what risks or consequences are associated with an action.
+
+### Target users
+
+- Everyday Windows users whose drives are filling up.
+- Developers with large dependency folders, build artifacts, caches and virtual environments.
+- Small businesses managing local files and backups.
+- Power users who want to understand storage growth.
+- Users who need duplicate-file discovery and cleanup reporting.
+
+### Product principles
+
+1. Local-first. Scanning and core cleanup must work without an internet connection.
+2. Safety before automation. No silent bulk deletion.
+3. Evidence before recommendations. Distinguish measured facts from estimates.
+4. Honest reporting. Never exaggerate performance benefits or potential savings.
+5. Responsive interface. Long scans must not freeze the application.
+6. Recoverability. Prefer Recycle Bin operations where appropriate and possible.
+7. Transparent errors. Report access failures and skipped paths instead of hiding them.
+8. Commercial readiness. Keep the application modular, testable, maintainable and license-compliant.
+
+## 3. Mandatory local engineering audit
+
+Perform this audit on the actual Windows development environment before choosing the foundation.
+
+### 3.1 Environment inventory
+
+Record:
+
+- Windows edition and version.
+- CPU architecture and available disk space.
+- Git version and current working directory.
+- Node.js and npm versions.
+- Python and package manager versions if needed.
+- Rust and Cargo versions if evaluating Rust/Tauri candidates.
+- Installed build tools and relevant Windows SDK components.
+- Existing repositories, local modifications and uncommitted changes.
+- Whether FFmpeg or other external binaries are required by any candidate.
+- Any environmental limitations preventing a reliable build.
+
+Never overwrite an existing repository, discard local changes, reset branches, or delete user files as part of the audit.
+
+### 3.2 Candidate repositories
+
+Inspect these repositories first:
+
+1. Diskplot: https://github.com/rodrigokiller/diskplot
+2. CrapCleaner: https://github.com/PatrickJnr/crapcleaner
+3. eDirStat: https://github.com/xangelix/edirstat
+4. Treelens: https://github.com/skyflyt/treelens
+
+Treat these as candidates, not predetermined winners.
+
+Inspect repository metadata, source files, recent commits, issue history where available, dependency manifests, release history, test coverage, architecture, build instructions and platform support.
+
+Do not assume a repository is healthy merely because it has a README, screenshots, stars or an MIT license.
+
+### 3.3 License and provenance audit
+
+For each candidate:
+
+- Inspect the actual LICENSE file and applicable copyright notices.
+- Identify all direct and transitive dependencies.
+- Identify bundled binaries, fonts, icons, images, datasets and other assets with separate licenses.
+- Check for additional licensing restrictions or commercial redistribution conditions.
+- Identify native modules and platform-specific components.
+- Determine which files and components may legally be reused.
+- Record upstream repository URLs, pinned commit hashes and the components adopted.
+- Preserve and update required copyright and license notices.
+- Create a third-party attribution inventory and software bill of materials where practical.
+
+MIT licensing alone does not prove that every dependency or bundled asset is MIT-licensed.
+
+If a component has an incompatible, unclear, restrictive or missing license, do not copy it until the issue is resolved. Implement an independent replacement or omit it.
+
+### 3.4 Actual build and test verification
+
+Clone candidates into isolated audit directories, never into an existing project directory.
+
+For each viable candidate:
+
+1. Install dependencies using the documented package manager and lockfile.
+2. Run the existing test suite.
+3. Run type checking, linting and production builds where applicable.
+4. Attempt Windows packaging if the tooling supports it.
+5. Record the exact commands, exit codes, failures, warnings and missing prerequisites.
+6. Distinguish tests that were run from tests that were merely documented.
+7. Investigate failures rather than immediately modifying upstream source to make the build pass.
+
+For Python projects, use an isolated environment. For Rust projects, verify the toolchain and native dependencies. Do not silently change dependency versions to make a build work.
+
+### 3.5 Functional and performance audit
+
+Use a controlled test directory containing known file sizes, nested folders, duplicate files, different extensions, unreadable paths where practical, symbolic links or junctions, long paths and filenames with unusual characters.
+
+Check:
+
+- Whether reported file and folder totals match the known dataset.
+- Whether hard links, symbolic links and junctions can cause double-counting or traversal loops.
+- Whether inaccessible files are reported accurately.
+- Whether cancellation actually stops the work.
+- Whether large scans keep the UI responsive.
+- Whether duplicate detection verifies file contents rather than trusting names.
+- Whether progress updates are meaningful.
+- Whether repeated scans give consistent results.
+- Whether Windows protected paths and permissions are handled correctly.
+- Whether large file counts create unacceptable memory consumption.
+
+Test on a controlled dataset before scanning an entire user drive.
+
+### 3.6 Security and cleanup audit
+
+Review every file operation, path resolver and cleanup function.
+
+Explicitly inspect:
+
+- Path traversal and path normalization.
+- Drive-letter and UNC paths.
+- Junctions, symbolic links and reparse points.
+- Time-of-check/time-of-use race conditions.
+- Protected system and application folders.
+- Recycle Bin behavior.
+- File locks and permission failures.
+- Administrator elevation requirements.
+- Shell command construction and injection risks.
+- Whether deletion can escape the intended cleanup root.
+- Whether errors are silently suppressed.
+- Whether any component attempts registry cleaning or unsafe automatic optimization.
+
+Do not run destructive cleanup tests against actual user data.
+
+### 3.7 Architecture decision
+
+Compare at least these options:
+
+A. Adopt or adapt Diskplot's Electron/React/TypeScript architecture.
+
+B. Use Treelens or a Rust/Tauri architecture.
+
+C. Use a separate native scanning engine with a desktop interface, if evidence justifies the extra complexity.
+
+D. Build a new application using the most appropriate verified components if no candidate passes.
+
+Score candidates against:
+
+- Windows reliability.
+- Code quality and maintainability.
+- Scanning accuracy.
+- Security and cleanup safety.
+- UI quality.
+- Test coverage.
+- Performance at large file counts.
+- Ease of adding premium features.
+- Packaging and update support.
+- Licensing clarity.
+- Integration effort.
+- Long-term maintenance risk.
+
+Do not combine entire repositories simply because they each contain useful features. Prefer the smallest maintainable set of components.
+
+### 3.8 Audit deliverable
+
+Write `docs/ENGINEERING_AUDIT.md` with:
+
+- Environment inventory.
+- Candidate repository and commit details.
+- License findings.
+- Commands actually executed and their results.
+- Build and test evidence.
+- Security findings.
+- Functional and performance findings.
+- Architecture comparison.
+- Chosen foundation and reasons.
+- Components to reuse, rewrite or exclude.
+- Known risks and unresolved blockers.
+- Next implementation phases.
+
+Then continue into implementation automatically if a defensible architecture is available. Do not claim success when essential checks remain blocked. If no candidate is suitable, choose the safest feasible alternative and document why.
+
+## 4. Application architecture
+
+Create a new, independent repository named `spacewise`.
+
+Use the chosen foundation where it passes the audit. If building a new Electron application, prefer:
+
+- Electron main process for privileged operations.
+- React and TypeScript for the renderer.
+- A typed, narrow preload API.
+- Context isolation enabled.
+- Node integration disabled in the renderer.
+- Strict Content Security Policy.
+- A dedicated scanning worker or process for long-running tasks.
+- SQLite or an equivalent local store for scan history, settings and audit records if justified.
+- A modular filesystem service.
+- Explicitly validated IPC messages and paths.
+- Reproducible builds and dependency lockfiles.
+
+Do not expose arbitrary filesystem operations, Node APIs, shell access or unrestricted command execution to renderer code.
+
+Do not add a database merely for fashion. Use the simplest architecture that reliably supports the required functionality.
+
+Keep application identity, package identifiers, icons, product name and build configuration separate from upstream projects.
+
+## 5. Core user experience
+
+Create a polished, approachable Windows desktop interface with:
+
+- Overview dashboard.
+- Drive selection.
+- Scan progress and cancellation.
+- Storage treemap and folder tree.
+- Largest files and folders.
+- File-type breakdown.
+- Cleanup recommendations.
+- Duplicate finder.
+- Scan history and comparisons.
+- Settings and privacy controls.
+- Activity and cleanup audit history.
+
+Use a consistent design system, accessible contrast, clear typography, meaningful empty states and responsive layouts.
+
+Never display fabricated scan data in production. Demo data may exist only in an explicit demo or test mode.
+
+## 6. Feature specifications
+
+### 6.1 Storage scanner
+
+Implement:
+
+- Drive and folder selection.
+- Recursive scanning.
+- Folder and file size aggregation.
+- Largest files and folders.
+- File counts and extension/type breakdowns.
+- Scan progress, elapsed time and cancellation.
+- Graceful handling of inaccessible files.
+- Clear reporting of skipped paths and errors.
+- Filtering by extension, size, path and date.
+- Optional exclusion rules.
+- Consistent size units and correct formatting.
+
+Define clearly whether displayed size means logical file size, allocated disk size or another measure. Do not confuse these measures.
+
+Avoid unbounded memory growth. Use batching, streaming or incremental aggregation where necessary.
+
+### 6.2 Treemap and navigation
+
+Implement an interactive treemap synchronized with a folder tree.
+
+Users must be able to:
+
+- Drill into a folder.
+- Navigate back to parent folders.
+- Sort by size, file count or name.
+- Search for files and folders.
+- Select a result and reveal it in Windows Explorer.
+- View the full path and relevant metadata.
+- Exclude known folders from analysis without deleting anything.
+
+Make large folders visually distinguishable without relying on color alone.
+
+### 6.3 Storage intelligence
+
+Identify common storage categories such as:
+
+- Downloads.
+- Temporary files.
+- Recycle Bin contents where accessible.
+- Browser caches where safely identifiable.
+- Developer dependency folders.
+- Build output and temporary build artifacts.
+- Virtual environments.
+- Application caches.
+- Large media files.
+- Archives and installers.
+- Old or abandoned files.
+- Duplicate files.
+
+Classifications must be explainable and based on observable evidence.
+
+Do not automatically assume a folder is safe to delete because its name contains `cache`, `temp`, `old`, `backup` or `node_modules`.
+
+For developer folders, explain what might be regenerated, what may need to be downloaded again and which user-specific data could be lost.
+
+### 6.4 Safe cleanup workflow
+
+Every cleanup action must follow this sequence:
+
+1. Identify a candidate using a specific rule.
+2. Explain why it is a candidate.
+3. Display the paths, item counts and estimated recoverable space.
+4. Allow the user to deselect individual items.
+5. Revalidate every selected path immediately before action.
+6. Warn about risks and consequences.
+7. Request explicit confirmation.
+8. Execute the action using the safest available method.
+9. Report successful, failed and skipped items separately.
+10. Record the action and actual result in the audit log.
+11. Provide before-and-after space reporting when measurable.
+
+Use the Recycle Bin where appropriate and technically possible. Clearly identify any operation that cannot be reversed.
+
+Do not implement blanket permanent deletion, silent background cleanup or cleanup based on broad wildcard paths.
+
+Never delete files outside the selected and validated scope.
+
+Do not implement a registry cleaner in the MVP.
+
+Do not automatically uninstall applications, disable services, terminate processes or modify startup settings.
+
+### 6.5 Duplicate-file finder
+
+Implement staged duplicate detection:
+
+1. Group candidate files by size.
+2. Eliminate impossible matches.
+3. Use partial hashing if useful for performance.
+4. Confirm matches using a full content hash.
+5. Group confirmed byte-identical files.
+6. Show all paths, sizes and metadata.
+7. Let users choose what to keep.
+8. Revalidate before acting.
+
+Never automatically select the file to delete solely because of its name, folder or age.
+
+Treat hard links, cloud-synced files, application-managed files and protected locations conservatively.
+
+Display estimated reclaimable space separately from the sum of duplicate file sizes to avoid overstating savings.
+
+### 6.6 Scan history and storage trends
+
+Save scan snapshots locally.
+
+Allow users to compare scans and identify:
+
+- Folders that grew or shrank.
+- New large files.
+- Newly discovered storage hotspots.
+- Files or folders no longer present.
+- Changes in file-type distribution.
+- Repeated growth in known categories.
+
+Clearly distinguish actual comparisons from inferred explanations. A scan comparison alone cannot prove which application caused growth.
+
+Allow users to delete scan history without deleting their files.
+
+### 6.7 Old-file discovery
+
+Allow filters by:
+
+- Minimum size.
+- Last modified date.
+- Extension.
+- Folder.
+- File age.
+- Selected drives.
+
+Do not label a file unused merely because it has not been modified recently. Explain that access time may be disabled or unreliable on Windows.
+
+Default to reporting and manual review, not deletion.
+
+### 6.8 Optional advanced features
+
+After the core product is reliable, consider:
+
+- Archive compression suggestions.
+- Installed-application inventory.
+- Read-only startup inventory.
+- Safe discovery of old installer versions.
+- Scheduled scans.
+- Storage alerts.
+- Exportable reports.
+- Configurable exclusions.
+- Optional AI-generated storage summaries.
+
+Keep risky or weakly supported features out of the initial release.
+
+## 7. Privacy and optional AI
+
+Core scanning must work offline.
+
+If AI explanations are introduced:
+
+- Use an explicit opt-in.
+- Explain which information will be sent externally.
+- Send only the minimum necessary metadata.
+- Do not upload file contents or complete file paths by default.
+- Never upload a directory listing without clear user consent.
+- Allow users to disable AI entirely.
+- Keep API keys out of source code and the renderer.
+- Use an appropriate secure credential mechanism and a trusted backend when required.
+- Display external provider costs where applicable.
+
+AI may explain a finding, but it must not independently execute cleanup actions.
+
+## 8. Freemium and licensing architecture
+
+Design the licensing boundary early, but do not let licensing delay the safe core product.
+
+Provide a genuinely useful free tier.
+
+Possible premium features include advanced scan comparisons, configurable storage monitoring, richer reports, advanced filters and optional AI analysis.
+
+Use separate product identity and entitlements for SpaceWise.
+
+Evaluate a signed license format using Ed25519, with the private signing key kept outside the distributed application. A public key may be embedded for verification.
+
+If online activation is implemented:
+
+- Use a secure licensing service or backend.
+- Do not place secret service credentials in the client.
+- Support an explicitly defined offline grace period where appropriate.
+- Handle activation, deactivation, expiry and revocation.
+- Clearly communicate premium status.
+- Preserve user files, settings and scan history after expiry.
+
+Do not hard-code a licensing provider or claim that a free plan supports the required commercial usage without checking its current terms.
+
+## 9. Testing requirements
+
+Build automated tests for:
+
+- Size aggregation.
+- Folder traversal.
+- Symlink and junction handling.
+- Path validation.
+- Cancellation.
+- Permission failures.
+- Duplicate verification.
+- Cleanup previews.
+- Cleanup revalidation.
+- Recycle Bin behavior where testable.
+- Scan snapshots and comparisons.
+- IPC validation.
+- License verification.
+- Error reporting.
+
+Use temporary test directories and synthetic data. Do not test destructive operations on actual user files.
+
+Include a repeatable Windows test checklist and an automated smoke-test procedure.
+
+Measure scanning behavior on a known dataset. Record results rather than inventing performance benchmarks.
+
+## 10. Packaging and commercial readiness
+
+Produce a Windows installer and, if practical, a portable build.
+
+Verify:
+
+- Installation and launch.
+- Application identity.
+- File and folder scanning.
+- Cancellation.
+- Safe cleanup.
+- Scan persistence.
+- Upgrade behavior.
+- Uninstallation behavior.
+- License notices and third-party attributions.
+- Application logs and crash reporting behavior.
+- No unnecessary telemetry.
+- No unexpected network requests.
+- No destructive behavior on first launch.
+
+Do not claim code signing unless an actual signing certificate and successful signing process are available.
+
+## 11. Documentation and repository structure
+
+Create and maintain:
+
+- `README.md`
+- `docs/ENGINEERING_AUDIT.md`
+- `docs/ARCHITECTURE.md`
+- `docs/SECURITY.md`
+- `docs/TESTING.md`
+- `docs/LICENSING.md`
+- `docs/ROADMAP.md`
+- Third-party notices.
+- Dependency inventory or SBOM where practical.
+- `.gitignore`
+- Environment example files containing placeholders only.
+
+Document build, test, run and package commands.
+
+Never commit API keys, tokens, private signing keys, personal file paths or user data.
+
+## 12. Implementation phases and acceptance criteria
+
+### Phase 0: Audit
+
+Complete the mandatory audit and record evidence. Select the foundation.
+
+### Phase 1: Reliable scanner
+
+Acceptance criteria:
+
+- Scan a selected folder and supported drives.
+- Display correct sizes on a known test dataset.
+- Show progress and allow cancellation.
+- Handle inaccessible files without crashing.
+- Display largest files and folders.
+- Show a useful file-type breakdown.
+- Keep the interface responsive.
+
+### Phase 2: Storage visualization
+
+Acceptance criteria:
+
+- Interactive treemap and folder tree work together.
+- Search, sorting and drill-down work.
+- Users can reveal a selected item in Explorer.
+- Empty and error states are understandable.
+
+### Phase 3: Safe cleanup
+
+Acceptance criteria:
+
+- Recommendations are explainable.
+- Preview matches the items selected for action.
+- Paths are revalidated.
+- Explicit confirmation is required.
+- Failed and successful actions are reported separately.
+- Cleanup is auditable.
+- Source files are never silently overwritten or permanently deleted by default.
+
+### Phase 4: Duplicates and history
+
+Acceptance criteria:
+
+- Duplicate groups are content-verified.
+- Users select what to keep.
+- Scan snapshots can be compared.
+- History is stored locally and can be removed independently of user files.
+
+### Phase 5: Premium readiness
+
+Acceptance criteria:
+
+- Premium boundaries are clear.
+- Licensing is independently testable.
+- Expiry does not block access to user files.
+- Free functionality remains useful.
+- External service dependencies and costs are documented.
+
+### Phase 6: Release candidate
+
+Acceptance criteria:
+
+- Windows build and packaging succeed.
+- Critical tests pass.
+- Known limitations are documented.
+- License notices are preserved.
+- A user can install, scan, inspect, safely clean, and reopen the application without developer assistance.
+
+## 13. Required working method
+
+Work in small, testable modules.
+
+After each phase:
+
+1. Run the relevant tests.
+2. Fix regressions before continuing.
+3. Record actual commands and results.
+4. Update documentation.
+5. Summarize what changed, what works, what remains and what is blocked.
+
+Do not produce a long strategy document instead of working software.
+
+Do not leave core buttons as placeholders.
+
+Do not simulate successful deletion, scanning, licensing or reporting.
+
+Do not silently suppress errors.
+
+Do not overwrite user changes.
+
+Do not create unnecessary abstractions or add dependencies without a clear benefit.
+
+## 14. First action
+
+Begin with the environment inventory and repository audit. Do not start by building the dashboard or modifying an upstream project.
+
+Return the audit findings and chosen architecture in `docs/ENGINEERING_AUDIT.md`, then continue directly into Phase 1 if a viable path exists.
+
+The final goal is a reliable, commercially distributable Windows product that helps users understand and manage storage without risking their data.

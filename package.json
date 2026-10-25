@@ -1,0 +1,78 @@
+{
+  "name": "spacewise",
+  "version": "0.1.0",
+  "description": "Understand your storage. Reclaim space safely. Keep your PC organized.",
+  "author": "SpaceWise Contributors",
+  "license": "MIT",
+  "main": "out/main/index.js",
+  "private": false,
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "smoke": "electron scripts/smoke.cjs",
+    "start": "electron-vite preview",
+    "typecheck": "tsc --noEmit",
+    "test": "tsx --test src/shared/*.test.ts src/main/*.test.ts src/renderer/src/lib/*.test.ts",
+    "icons": "electron scripts/make-icons.cjs",
+    "fixture": "node scripts/make-fixture.mjs",
+    "explain": "tsx scripts/explain.ts",
+    "bench": "tsx scripts/bench.ts",
+    "keygen": "tsx scripts/make-license-key.ts",
+    "verify:licence": "tsx scripts/verify-licence.ts",
+    "dist": "electron-vite build && electron-builder --win --publish never",
+    "dist:dir": "electron-vite build && electron-builder --win --dir --publish never"
+  },
+  "build": {
+    "appId": "com.spacewise.app",
+    "productName": "SpaceWise",
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "eazypickins001-tech",
+        "repo": "SpaceWise",
+        "releaseType": "release"
+      }
+    ],
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "out/**/*",
+      "package.json"
+    ],
+    "win": {
+      "icon": "build/icon.ico",
+      "target": [
+        "nsis",
+        "portable"
+      ],
+      "artifactName": "${productName}-${version}-${arch}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "artifactName": "${productName}-Setup-${version}-${arch}.${ext}"
+    }
+  },
+  "dependencies": {
+    "electron-updater": "^6.8.9",
+    "koffi": "^3.3.2"
+  },
+  "devDependencies": {
+    "@fontsource/barlow": "^5.3.0",
+    "@fontsource/barlow-semi-condensed": "^5.3.0",
+    "@types/node": "^26.6.4",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^5.2.0",
+    "electron": "^44.5.1",
+    "electron-builder": "^26.15.3",
+    "electron-vite": "^5.0.0",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "vite": "^7.3.6"
+  }
+}

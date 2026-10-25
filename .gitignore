@@ -1,0 +1,42 @@
+node_modules/
+out/
+release/
+dist/
+coverage/
+.impeccable/
+prototypes/
+.venv/
+venv/
+
+# Build and tooling output
+*.log
+npm-debug.log*
+*.tsbuildinfo
+
+# Editor and OS noise
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# Secrets. Nothing in this project should ever match these, which is the point.
+# The application is client-side: no server, no telemetry, and no key that
+# belongs to the vendor. There is one deliberate exception -- the optional
+# storage summary lets a person configure an endpoint and an API key, and that
+# key is written to their user data directory, never here. If any other change
+# appears to need a secret in the tree, the design of that change is wrong.
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+*.p12
+*.pfx
+secrets*
+credentials*
+!THIRD-PARTY-NOTICES.md
+
+# Local scratch
+_tmp/
+scratch/

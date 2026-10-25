@@ -1,0 +1,191 @@
+# Testing
+
+## Running the suite
+
+```bat
+npm test          :: node --test via tsx, over src/shared/*.test.ts and src/main/*.test.ts
+npm run typecheck :: tsc --noEmit
+npm run build     :: electron-vite build, then required before the smoke test
+npm run smoke     :: loads the built interface and checks it actually works
+```
+
+No test framework beyond Node's built-in runner and `node:assert`. There is no test
+dependency to keep updated, and the tests run in about two seconds.
+
+### The smoke test
+
+`npm test` covers logic. It cannot tell you whether the built interface runs, because it never
+loads it. `npm run smoke` does: it opens the real production renderer in a hidden window with the
+real preload and the real Content Security Policy, then fails if
+
+- React did not mount, or the title is wrong;
+- the stylesheet did not apply (a computed style is still at its initial value);
+- `require()` is reachable from the renderer, or the preload bridge is missing;
+- anything at all was refused by the policy during load;
+- the **production scan** gives the wrong answer. The smoke test also runs the built scan worker
+  on a temporary folder with four files and a known layout, and fails if the entry count, the
+  file and folder counts, the bytes on disk or the unreadable count disagree. That is the one
+  part of the application no unit test can reach, because it needs worker threads.
+
+It also asserts what the policy *should* refuse, because a check that cannot fail is not a check:
+
+| Written by | Expected | Why it is asserted |
+| --- | --- | --- |
+| `<style>` element | refused | proves the check can detect a refusal |
+| `style="..."` attribute | refused | not used anywhere in the application |
+| `element.style.x = ...` | **allowed** | React needs it; the interface breaks without it |
+
+That last row is the reason `'unsafe-inline'` could be removed from `style-src`, and the test
+encodes the reason rather than leaving it in a comment.
+
+`npm test` covers `src/shared`, `src/main` and `src/renderer/src/lib`. The renderer's `lib` is
+included because the modules there that matter -- the treemap layout above all -- are pure
+arithmetic over the scan table with no DOM in them, so they can be tested like anything else.
+
+It needs a build first, so the order is `npm run build && npm run smoke`. It is not part of
+`npm test` because it launches Electron.
+
+## What is covered
+
+Last verified run on this machine: **257 tests, 257 passed, 0 failed** (~7.2 s).
+
+| File | What it pins down |
+| --- | --- |
+| `src/shared/table.test.ts` | Size, logical-size and file-count rollup; newest-change propagation; extension indexing rules; child ordering; partial-preview behaviour; link flags; transferable buffers; the "only the first `n` entries are real" contract; the empty-folder case |
+| `src/shared/storage-intelligence.test.ts` | Category classification; the "a name alone is not evidence" rule; sibling-manifest proof as positive and negative cases; no double counting of nested candidates; size floor; location-based matching for temp and browser caches; links excluded; risk levels for the review-tier categories; every finding is explainable; grouping and additive totals; age filtering and the last-access disclaimer; largest-file ordering and subtree scoping |
+| `src/shared/cleanup.test.ts` | Path normalisation including `..`; segment-aware containment; scope validation; wildcard, drive-root, OS-folder and credential-store refusal; plan building with explained refusals; the size-change, mtime-change and disappearance revalidation cases; outcome accounting with the `partial` flag; audit record assembly; action labelling |
+| `src/main/license.test.ts` | Real Ed25519 sign/verify round trips; wrong-key, edited-payload and corrupted-signature refusal; expiry, grace window and the switch to turn grace off; machine binding, mismatch and an unidentifiable machine; the empty-key build refusing everything; malformed and unsupported tokens; free vs premium entitlements; machine fingerprint stability |
+| `src/main/audit-log.test.ts` | Append and read against a real temporary directory; newest-first ordering; the run cap and size trim; a damaged or truncated line not destroying the rest of the history; a partial run stored as partial |
+| `src/main/cleanup-pipeline.test.ts` | The whole pipeline against a **real** filesystem: walk a fixture tree into a scan table, detect only the provable candidates, assert the totals to the byte, plan, then revalidate after a file changes and after a folder is deleted, and build a truthful record |
+| `src/main/lister.test.ts` | The **real** directory lister, both implementations: entry counts, exact logical lengths, allocated size, a junction reported as a link and never as a folder, a hard link counted per name, non-ASCII and spaced names surviving the Win32 buffer, `.`/`..` never appearing, a missing folder and a file-as-folder returning an error rather than a silent zero, and a path over 260 characters |
+| `src/main/license-store.test.ts` | Persistence against a real file: a valid key is stored and read back, an invalid key is refused and **never written**, a damaged or empty token file leaves the free tier working, an expired licence is kept but unlocks nothing, the grace window, removal, and re-activation replacing rather than appending |
+| `src/main/scope.test.ts` | The policy every path-taking IPC handler shares: the scanned root and anything inside it are reachable, while a sibling folder, a traversal, a wildcard and an empty path are not; the scanned root may be a subject but never a target; and an operating-system folder or a credential store is refused **even when it is the scanned root**. That last group is the part that still holds under a compromised renderer, so it is asserted separately and named as such |
+| `src/main/dupfind.test.ts` | The duplicate finder against planted files: byte-identical copies grouped, and files differing in the first byte, the last byte, or **only in the middle** all kept apart. The middle case is what the two passes exist for, so the test first asserts that the cheap head-and-tail pass genuinely cannot tell those two apart, and only then that the full read can. Also the boundary at exactly twice the edge (where one pass suffices), the single byte left unread at the edge plus one, an unreadable file skipped rather than fatal, and a file whose length no longer matches the scan refused rather than judged on part of itself |
+| `src/shared/changed-since.test.ts` | The single guard behind every destructive action decided earlier: an unchanged file passes, and a file that is gone, unreadable, the wrong length or the wrong age does not. Also that the cleanup planner now refuses an item it cannot fingerprint rather than waving it through, which it previously did |
+| `src/main/scan-trash-agreement.test.ts` | The invariant the guard rests on: the length and modification time the scanner records are exactly what a fresh `lstat` reports, for the portable lister, the Windows bulk lister and the one that actually ships, at ordinary sizes and either side of a whole second |
+| `src/main/walk.test.ts` | The scan walk, against a fake disk and a real one: counts through nested folders, parents linked so the tree has a shape, links listed but never followed, a folder that cannot be listed flagged and explained while the rest of the walk carries on, a file that cannot be read recorded rather than dropped, batching still covering everything, stopping handing over what was measured and marking itself incomplete, and a real temporary tree walked with the production lister |
+| `src/shared/ai-summary.test.ts` | What the optional summary would send. With names withheld the message contains no name, no separator and no part of a path; the scanned folder's full path never appears even when names are wanted; a path outside the scan is reduced to its last segment and a bare drive letter becomes "(a drive)"; the message is capped in findings, in types and in total size, and a million-file scan stays under the ceiling. Also that the standing instructions forbid presenting anything as safe to delete |
+| `src/main/ai.test.ts` | The only outbound code in the application, exercised against a real HTTP server on the loopback address: https is required for anything remote while a model on this machine may use `http://127.0.0.1`, the message and the standing instructions are sent and nothing else is, the reply is bounded and trimmed, an oversized message is refused without sending anything, a bad status and an unreadable reply are both reported, and the key is never handed to the interface |
+| `src/shared/dupes.test.ts` | What a duplicate search is worth: every copy but one counted, the largest copy on disk kept, the figure taken from on-disk size rather than shared length, and copies that are already gone freeing nothing |
+| `src/renderer/src/lib/treemap.test.ts` | The squarified layout, which is pure arithmetic and now tested directly: each child's area matches its share of the bytes, no two cells at the same depth overlap, every cell stays inside its box, a folder past the level limit becomes one block, the remainder folds into a single rest cell named after its folder, and the work stays bounded by the box rather than the file count |
+
+Highlights worth knowing about:
+
+- The size rollup is tested for the property that matters most: **on-disk size and logical
+  size stay independent**. A sparse-file case asserts they never collapse into one number.
+- The cleanup tests stage a **time-of-check/time-of-use** race using a fake filesystem, which
+  is the only practical way to test it deterministically.
+- The licensing tests generate a fresh Ed25519 key pair per run. No vendor private key exists in
+  this repository, and none could: signing needs it and verifying does not. Because the shipped
+  build now carries a real vendor *public* key, the test that used to assert the constant stayed
+  empty would be guarding the wrong thing, so it now asserts what still matters — that an empty
+  key refuses everything and says why, and that whatever is compiled in is a usable key.
+
+## What is *not* covered yet
+
+This list is the honest gap. None of it has been run.
+
+- **No test drives the Electron application itself.** Nothing opens a window, and the scan
+  worker and the IPC handlers are exercised only through their pure parts. The cleanup
+  pipeline is covered against a real filesystem, but through a walker written inside the test
+  rather than through `scanworker`.
+- **The controlled-dataset protocol is only partly built.** A fixture tree with known sizes is
+  walked and its totals asserted to the byte; the real lister is covered for junctions, hard
+  links, non-ASCII names and paths over 260 characters; and the cleanup pipeline runs end to end
+  against a real tree. Still uncovered: **unreadable directories**, and a whole-tree walk through
+  `scanworker` itself rather than through a walker written inside the test.
+- **No hard-link double-counting test.** A file with several links is counted once per name.
+  This is inherited behaviour, disclosed in the interface, and unverified here.
+- **No cancellation-latency measurement.**
+- **No memory ceiling measurement** at large file counts. Roughly 60 bytes per file is the
+  design figure, not a measured one.
+- **No duplicate-detection test** against planted byte-identical files, and no test that
+  near-identical files are correctly *not* grouped.
+- **No clean-machine install, upgrade or uninstall test.**
+- **No signed-build verification**, because there is no signing certificate.
+
+## Manual Windows checklist
+
+Run this on a machine you can afford to experiment on. Nothing here deletes anything by itself.
+
+### Scan correctness
+
+1. Scan a folder whose size Windows Explorer also reports. Compare the totals. They should
+   agree within the accounting differences of on-disk versus logical size, and the interface
+   should state which it is showing.
+2. Scan a folder containing a junction (for example under `C:\Users\<you>\AppData`). The
+   junction appears as an entry, is not descended into, and its target's bytes are not
+   counted twice.
+3. Scan `C:\Windows\System32` as a standard user. Access-denied paths are counted, listed and
+   do not stop the scan or crash the application.
+4. Cancel a long scan. The interface stops promptly and the partial result is marked
+   incomplete rather than presented as complete.
+5. Scan a small folder twice. The totals match.
+
+### Interface
+
+6. Drill into the treemap and back out. The tree, the breadcrumb and the treemap stay in
+   agreement about the current folder.
+7. Search for a known filename; confirm it is found and that selecting the result reveals it
+   in Explorer.
+8. Resize the window during a scan. The layout holds and the values keep updating.
+
+### Cleanup (only on disposable data)
+
+9. Build a fixture folder named `dist` **without** a `package.json`. It must not appear as a
+   cleanup candidate.
+10. Add a `package.json` beside it. Now it appears, with its size and a risk level.
+11. Build a plan. Check the preview lists exactly the paths you selected and nothing else.
+12. While the review is open, add a file inside one selected folder. Confirm that item is
+    marked invalidated and is not acted on.
+13. Run the action and confirm: every item is reported individually, the Recycle Bin
+    contains what was moved, and the run is not reported as complete if anything was skipped.
+14. Confirm the audit record exists and lists what was planned, what happened and what was
+    refused.
+
+### Release
+
+15. Install from the NSIS installer: shortcut created, application starts, product name and
+    version correct.
+16. Scan, cancel, clean, close, reopen. State survives a restart; scan history is still there.
+17. Uninstall. User files are untouched. The audit log under the user-data directory is the
+    only thing the uninstaller leaves behind.
+18. Confirm no unexpected network requests. A scan must complete with the network disabled.
+
+## Performance targets
+
+Partly measured. `npm run bench` measures what can be measured without the interface, and
+prints what it could not measure as unmeasured rather than guessing at it.
+
+Last run: 4 logical CPUs, Node v22.17.0, warm cache.
+
+| Scenario | Target | Measured | |
+| --- | --- | --- | --- |
+| Walk a project folder, warm cache | — | 29,283 files/s over 11,072 files and 1,320 folders | |
+| The same rate over 100k files | under 2 s | ~3.4 s | see the caveats |
+| Treemap layout, 2,460 cells at 1200x800, 5 levels | under 30 ms | 24.5 ms | met |
+| Finalise a 2,000,000-node table | — | 998 ms | |
+| Memory at 2,000,000 nodes | under 400 MB RSS | 294 MB | met |
+| Cancel a running scan, thread retired | within 4 s | 207 ms and 369 ms on two runs | met |
+| A multi-million-file volume | tens of seconds | **not measured** | needs a volume that size |
+| Treemap paint | under 16 ms | **not measured** | needs a canvas; the figure above is the layout arithmetic only |
+| Cancel acknowledged on screen | ~200 ms | **not measured** | that half is about the interface, not the scanner |
+
+Three caveats, because without them these numbers read as more than they are:
+
+- **They move with the machine.** Two runs while other work was going on gave 148 ms and
+  378 ms for the same walk of the same folder, and the 100k figure fell anywhere between
+  1.3 s and 5.0 s. Re-run `npm run bench` on a quiet machine before quoting it.
+- The benchmark drives the **production directory lister** and the real table builders, but not
+  the worker pool. The application spreads directories across `availableParallelism()` workers,
+  so its wall clock should be better than these figures and never worse. Treat them as a floor.
+- 11,072 files is not 100,000. That row is the measured rate extended, not a measurement, and
+  the bench script labels it that way in its own output.
+
+Cancel latency is the one target that needs the built scanner rather than the library, so the
+benchmark starts the built coordinator, asks it to cancel as soon as it says anything at all,
+and times until the thread is gone. A run in which the scan finished before the cancel landed
+is reported as unmeasured rather than counted, so the figure is always a real interruption.
+
+Do not publish any comparison against another tool until every row has a measured value, on the
+same machine, with the same dataset, warm cache.
