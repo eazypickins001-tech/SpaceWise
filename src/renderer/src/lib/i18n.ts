@@ -425,7 +425,7 @@ const en = {
   "trash.many": "{count} items",
   "trash.size": "{bytes} will leave this location. You can restore it from the Recycle Bin.",
   "trash.confirm": "Send to Recycle Bin",
-  "trash.failed": "{count} were left alone. They may be in use, protected, or changed since they were scanned.",
+  "trash.failed": "{count} were left alone: {why}.",
 
   "tip.files": "{count} files",
   "tip.file": "1 file",
@@ -441,7 +441,7 @@ const en = {
   "upd.install": "Restart and install",
   "upd.none": "You have the latest version.",
   "upd.dev": "Updates are checked in installed builds only.",
-  "upd.error": "The update check failed. Try again later.",
+  "upd.error": "The update check failed: {why}",
 
   "about.line": "Version {version}. Free and open source under the MIT license.",
   "about.by": "Made by Rodrigo Sanguanini,",
@@ -876,7 +876,7 @@ const pt: Record<Key, string> = {
   "trash.many": "{count} itens",
   "trash.size": "{bytes} vão sair deste local. Dá para restaurar pela Lixeira.",
   "trash.confirm": "Enviar para a Lixeira",
-  "trash.failed": "{count} ficaram onde estavam. Podem estar em uso, protegidos, ou terem mudado desde a varredura.",
+  "trash.failed": "{count} ficaram onde estavam: {why}.",
 
   "tip.files": "{count} arquivos",
   "tip.file": "1 arquivo",
@@ -892,7 +892,7 @@ const pt: Record<Key, string> = {
   "upd.install": "Reiniciar e instalar",
   "upd.none": "Você já tem a versão mais recente.",
   "upd.dev": "Atualizações só são verificadas na versão instalada.",
-  "upd.error": "Não deu para verificar atualizações. Tente mais tarde.",
+  "upd.error": "Não deu para verificar atualizações: {why}",
 
   "about.line": "Versão {version}. Grátis e de código aberto, licença MIT.",
   "about.by": "Feito por Rodrigo Sanguanini,",

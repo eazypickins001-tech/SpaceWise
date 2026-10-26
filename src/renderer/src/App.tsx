@@ -322,7 +322,7 @@ export function App() {
         setNotice({ text: t("upd.ready", { version: s.version }), action: { label: t("upd.install"), run: () => void window.api.installUpdate() } });
       else if (asked && s.state === "none") setNotice({ text: t("upd.none") });
       else if (asked && s.state === "dev") setNotice({ text: t("upd.dev") });
-      else if (asked && s.state === "error") setNotice({ text: t("upd.error"), bad: true });
+      else if (asked && s.state === "error") setNotice({ text: t("upd.error", { why: s.error }), bad: true });
       if (s.state !== "checking") askedUpdate.current = false;
     });
     return () => {
@@ -589,9 +589,14 @@ export function App() {
     const phone = window.api.phone;
     const results = await (erase && phone ? phone.erase(targets) : window.api.trash(targets));
     let failed = 0;
+    // Why each one was left where it was. Main records a reason for every
+    // refusal; this used to discard it and print "they may be in use", which was
+    // a guess, and was wrong -- the answers were already here.
+    const reasons = new Map<string, number>();
     results.forEach((r, i) => {
       if (!r.ok) {
         failed++;
+        reasons.set(r.error, (reasons.get(r.error) ?? 0) + 1);
         return;
       }
       const id = ids[i];
@@ -601,7 +606,10 @@ export function App() {
     });
     setHover(-1);
     setVersion((v) => v + 1);
-    if (failed > 0) setNotice({ text: t("trash.failed", { count: failed }), bad: true });
+    if (failed > 0) {
+      const why = [...reasons.entries()].map(([text, n]) => (n === failed ? text : `${n} × ${text}`)).join("; ");
+      setNotice({ text: t("trash.failed", { count: failed, why }), bad: true });
+    }
   };
 
   // Live sync ----------------------------------------------------------------

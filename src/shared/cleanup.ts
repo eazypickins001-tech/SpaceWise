@@ -257,6 +257,17 @@ function planReason(kind: ChangeKind): string {
   return "the item could not be read";
 }
 
+// The same four kinds again, phrased for an action taken straight after a scan
+// rather than for a plan drawn earlier. The interface shows one of these as the
+// reason a file was left where it was, because "it may be in use" is a guess and
+// it was standing in for an answer the application already had.
+export function changeReason(kind: ChangeKind): string {
+  if (kind === "gone") return "it is no longer there";
+  if (kind === "size") return "its size changed after the scan";
+  if (kind === "mtime") return "it was modified after the scan";
+  return "it could not be read";
+}
+
 export function revalidate(plan: CleanupPlan, probe: FsProbe): Revalidation {
   const ready: CleanupItem[] = [];
   const invalidated: RejectedItem[] = [];

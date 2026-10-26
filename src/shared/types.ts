@@ -133,11 +133,11 @@ export interface TrashTarget {
   mtime: number | null;
 }
 
-export interface TrashResult {
-  path: string;
-  ok: boolean;
-  error?: string;
-}
+// A refusal always says why -- it is a union rather than a boolean beside an
+// optional message so that the reason cannot be dropped without the compiler
+// noticing. It was dropped: the interface printed one guess for every failure
+// while main recorded the true reason on each of them.
+export type TrashResult = { path: string; ok: true } | { path: string; ok: false; error: string };
 
 // One batch of folders that changed on disk, listed again. The arrays are the
 // same ones a folder worker returns during a scan.

@@ -19,10 +19,11 @@ import { hasFeature } from "../shared/entitlements";
 import type { LicenseState } from "../shared/entitlements";
 import { aiStatus, readAiSettings, requestAdvice, requestSummary, settingsPathIn, writeAiSettings } from "./ai";
 import type { AiSettings } from "./ai";
-import { buildAuditRecord, buildPlan, changedSince, normalizePath, revalidate } from "../shared/cleanup";
-import type { Action, AuditRecord, Candidate, CleanupPlan, FsProbe, ItemOutcome } from "../shared/cleanup";
+import { buildAuditRecord, buildPlan, changeReason, changedSince, normalizePath, revalidate } from "../shared/cleanup";
+import type { Action, AuditRecord, Candidate, CleanupPlan, ItemOutcome } from "../shared/cleanup";
 import { refuseReason } from "./scope";
 import type { Reach } from "./scope";
+import { fsProbe } from "./probe";
 import type { DirResult } from "./dirworker";
 import type {
   DriveInfo,
@@ -397,31 +398,11 @@ ipcMain.handle("dup:start", (e, candidates: DupCandidate[]) => {
 // Cleanup -----------------------------------------------------------------
 //
 // The rules live in src/shared/cleanup.ts and are pure. Main supplies only the
-// two things that need a real filesystem: a probe, and the act of moving a file
-// to the Recycle Bin.
+// two things that need a real filesystem: the probe, which lives in
+// src/main/probe.ts so that a test can hold it to the scanner's units, and the
+// act of moving a file to the Recycle Bin.
 
 const auditFile = (): string => join(app.getPath("userData"), "cleanup-audit.jsonl");
-
-// lstat, never stat: a junction must be fingerprinted as the link itself rather
-// than as its target, because the link is what will be moved.
-const probe: FsProbe = {
-  resolve(path) {
-    try {
-      lstatSync(path);
-      return path;
-    } catch {
-      return null;
-    }
-  },
-  fingerprint(path) {
-    try {
-      const st = lstatSync(path);
-      return { size: st.size, mtime: Math.floor(st.mtimeMs) };
-    } catch {
-      return null;
-    }
-  },
-};
 
 // A plan may only cover a root this window actually scanned.
 function inScope(s: Session, scope: string): boolean {
@@ -451,7 +432,7 @@ ipcMain.handle("clean:plan", (e, scopeArg: string, candidates: Candidate[], acti
       estimatedBytes: 0,
     };
   }
-  return buildPlan(scope, candidates ?? [], wanted, probe);
+  return buildPlan(scope, candidates ?? [], wanted, fsProbe);
 });
 
 ipcMain.handle("clean:run", async (e, plan: CleanupPlan) => {
@@ -460,7 +441,7 @@ ipcMain.handle("clean:run", async (e, plan: CleanupPlan) => {
     return { outcomes: [] as ItemOutcome[], invalidated: [], record: null, error: "ESCOPE" };
   }
   // Rule 4: every path is rechecked now, not when the plan was drawn.
-  const { ready, invalidated } = revalidate(plan, probe);
+  const { ready, invalidated } = revalidate(plan, fsProbe);
   const outcomes: ItemOutcome[] = [];
   for (const item of ready) {
     try {
@@ -575,9 +556,12 @@ ipcMain.handle("shell:trash", async (e, targets: TrashTarget[]): Promise<TrashRe
     // must still be the file that was described. A copy that changed in the
     // meantime is left where it is rather than removed on a claim that has
     // stopped being true. Same guard the cleanup planner uses.
-    const changed = changedSince({ path, size: t?.size ?? null, mtime: t?.mtime ?? null }, probe);
+    const changed = changedSince({ path, size: t?.size ?? null, mtime: t?.mtime ?? null }, fsProbe);
     if (changed !== null) {
-      out.push({ path, ok: false, error: changed });
+      // The kind is turned into words here rather than handed to the interface
+      // as "mtime", which is what it was showing nobody: the renderer used to
+      // discard this field and print a guess instead.
+      out.push({ path, ok: false, error: changeReason(changed) });
       continue;
     }
     try {

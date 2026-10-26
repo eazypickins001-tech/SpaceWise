@@ -7,6 +7,7 @@ import {
   actionLabel,
   buildAuditRecord,
   buildPlan,
+  changeReason,
   isInside,
   normalizePath,
   revalidate,
@@ -237,4 +238,24 @@ test("an irreversible action is never labelled as a safe one", () => {
   assert.match(actionLabel("trash"), /recoverable/);
   assert.match(actionLabel("delete"), /cannot be undone/);
   assert.notEqual(actionLabel("trash"), actionLabel("delete"));
+});
+
+// A refusal is shown to the person verbatim, so the wording is the interface.
+// The interface used to say "they may be in use" for every failure, which was a
+// guess: these sentences are the answer it already had and threw away.
+test("every refusal says why, and never names a cause it cannot know", () => {
+  assert.equal(changeReason("gone"), "it is no longer there");
+  assert.equal(changeReason("size"), "its size changed after the scan");
+  assert.equal(changeReason("mtime"), "it was modified after the scan");
+  assert.equal(changeReason("unreadable"), "it could not be read");
+
+  // The four are distinct, and none of them is the old guess.
+  const all = [changeReason("gone"), changeReason("size"), changeReason("mtime"), changeReason("unreadable")];
+  assert.equal(new Set(all).size, 4);
+  for (const sentence of all) assert.doesNotMatch(sentence, /in use/);
+  // A sentence, not the bare code the main process used to hand over.
+  for (const sentence of all) {
+    assert.doesNotMatch(sentence, /^(gone|size|mtime|unreadable)$/, `"${sentence}" is still a code, not a sentence`);
+    assert.match(sentence, /^it/, `"${sentence}" should read as a sentence`);
+  }
 });
