@@ -357,6 +357,14 @@ ipcMain.handle("snap:load", (_e, file: string) => {
 
 // Duplicates --------------------------------------------------------------
 
+// Stopping has to reach the worker, not only the interface. Without this the
+// button reset the pane while the pass carried on reading files in the
+// background, which is worse than no button at all: it looks stopped.
+ipcMain.handle("dup:cancel", (e) => {
+  const s = sessionOf(e);
+  if (s) stopDup(s);
+});
+
 ipcMain.handle("dup:start", (e, candidates: DupCandidate[]) => {
   const s = sessionOf(e);
   if (!s) return;
