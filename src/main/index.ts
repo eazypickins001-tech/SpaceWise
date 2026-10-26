@@ -394,11 +394,6 @@ ipcMain.handle("dup:start", (e, candidates: DupCandidate[]) => {
   });
 });
 
-ipcMain.handle("dup:cancel", (e) => {
-  const s = sessionOf(e);
-  if (s) stopDup(s);
-});
-
 // Cleanup -----------------------------------------------------------------
 //
 // The rules live in src/shared/cleanup.ts and are pure. Main supplies only the

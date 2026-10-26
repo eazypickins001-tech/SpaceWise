@@ -7,6 +7,7 @@ npm test          :: node --test via tsx, over src/shared/*.test.ts and src/main
 npm run typecheck :: tsc --noEmit
 npm run build     :: electron-vite build, then required before the smoke test
 npm run smoke     :: loads the built interface and checks it actually works
+npm run boot      :: starts the built main process and checks a window opens
 ```
 
 No test framework beyond Node's built-in runner and `node:assert`. There is no test
@@ -26,6 +27,11 @@ real preload and the real Content Security Policy, then fails if
   on a temporary folder with four files and a known layout, and fails if the entry count, the
   file and folder counts, the bytes on disk or the unreadable count disagree. That is the one
   part of the application no unit test can reach, because it needs worker threads.
+- the **application does not start**. It also starts the built main process in a child and fails
+  if it throws while loading or never opens a window. Nothing else loads `out/main/index.js`, so
+  a main process that dies before `app.whenReady()` used to pass the entire suite; a duplicated
+  `ipcMain.handle()` registration did exactly that, and the only symptom was Electron's own
+  "Error" dialog. `npm run boot` runs that check on its own when you want it without the rest.
 
 It also asserts what the policy *should* refuse, because a check that cannot fail is not a check:
 
@@ -85,13 +91,15 @@ Highlights worth knowing about:
 
 This list is the honest gap. None of it has been run.
 
-- **Nothing drives the interface beyond the start screen.** The smoke test opens the real built
-  renderer with the real preload and the real policy, and runs the built scan worker against a
-  folder with a known answer, but it never gets past the opening screen. The Clean up tab, the
-  duplicate list, the history, the licence sheet and the summary sheet are covered by unit tests
-  over their pure parts and by nothing else. **This is the largest remaining gap:** a component
-  that throws when mounted with real scan data would ship unnoticed, and one of those was added
-  in the last round of work.
+- **Nothing drives the interface beyond the start screen.** The main process *starting* is now
+  covered (`npm run boot`, and as part of `npm run smoke`), and the smoke test opens the real
+  built renderer with the real preload and the real policy, but it never gets past the opening
+  screen. The Clean up tab, the duplicate list, the history, the licence sheet, the summary sheet
+  and the chat sheet are covered by unit tests over their pure parts and by nothing else. That
+  the main process ever started was the same shape of gap until it shipped a startup failure —
+  every test passed while the application could not open a window at all. **This is still the
+  largest remaining gap:** a component that throws when mounted with real scan data would ship
+  unnoticed, and one of those has already done so once.
 - **No test opens a folder through the interface.** Picking a folder, dragging one in and the
   drive list are untested end to end; every test starts a scan by calling the worker directly.
 - **Unreadable directories are covered in the walk and the lister, but not through

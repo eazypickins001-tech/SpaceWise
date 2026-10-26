@@ -19,8 +19,14 @@
 // The third is what React does for style={{...}}, and the interface depends on
 // it. A check that cannot fail is not a check, so all three are asserted.
 //
+// It also starts the built main process in a child and fails if it throws while
+// loading or never opens a window. That is the one part of the application the
+// unit tests never load, so a main process that dies before app.whenReady()
+// otherwise passes everything.
+//
 //   npm run build && npm run smoke
 const { app, BrowserWindow } = require("electron");
+const { spawnSync } = require("node:child_process");
 const { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } = require("node:fs");
 const { tmpdir } = require("node:os");
 const { Worker } = require("node:worker_threads");
@@ -96,6 +102,28 @@ async function checkScan() {
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+}
+
+// The main process is started in a child, not in this one. Loading it here would
+// give this harness two windows and two competing lifecycle handlers, and a
+// throw in it would take the rest of the checks down with it — hiding the very
+// failures worth reporting. The child asserts that it reached app.whenReady()
+// and opened a window, and says so on stdout; anything else is a failure,
+// including the child dying before it printed anything.
+function checkBoot() {
+  const env = { ...process.env };
+  delete env.ELECTRON_RUN_AS_NODE; // otherwise the child runs as plain Node and cannot load main
+  const r = spawnSync(process.execPath, [path.join(__dirname, "boot.cjs")], { encoding: "utf8", timeout: 60_000, env });
+  const out = String(r.stdout || "") + String(r.stderr || "");
+  const passed = /BOOT PASSED/.test(out);
+  if (!passed) {
+    // Prefer the line carrying the reason over the bare marker, since the marker
+    // on its own says nothing — the whole point of this check is the reason.
+    const lines = out.split(/\r?\n/);
+    const reason = lines.find((l) => /BOOT FAILED:/.test(l)) || lines.find((l) => /BOOT FAILED/.test(l));
+    problems.push("the application did not boot: " + (reason ? reason.trim().replace(/^BOOT FAILED:\s*/, "") : `no word from the boot check (exit code ${r.status})`));
+  }
+  return passed;
 }
 
 app.on("window-all-closed", () => app.quit());
@@ -183,6 +211,9 @@ app
       problems.push(`the scan worker failed: ${err && err.message ? err.message : String(err)}`);
     }
 
+    // The application actually starting, which no unit test covers.
+    const booted = checkBoot();
+
     const errors = messages.filter((m) => m.level === "error" || m.level === "3");
     const reported = errors.filter((m) => !/Content Security Policy|Refused to/i.test(m.message));
 
@@ -203,6 +234,9 @@ app
     } else {
       console.log("    did not run");
     }
+    console.log("");
+    console.log("  the application starts");
+    console.log("    main process boots, window opens   " + (booted ? "yes (correct)" : "NO"));
     console.log("");
     console.log("  policy behaviour");
     console.log("    inline <style> element      " + (refusedStyleElement ? "refused (correct)" : "ALLOWED (unexpected)"));

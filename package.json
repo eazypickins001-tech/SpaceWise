@@ -10,6 +10,7 @@
     "dev": "electron-vite dev",
     "build": "electron-vite build",
     "smoke": "electron scripts/smoke.cjs",
+    "boot": "electron scripts/boot.cjs",
     "start": "electron-vite preview",
     "typecheck": "tsc --noEmit",
     "test": "tsx --test src/shared/*.test.ts src/main/*.test.ts src/renderer/src/lib/*.test.ts",

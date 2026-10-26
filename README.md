@@ -79,6 +79,7 @@ npm run typecheck    :: tsc --noEmit
 npm test             :: the test suite
 npm run build        :: production build into out/
 npm run smoke        :: loads the built interface and checks it really runs (needs a build first)
+npm run boot         :: starts the built main process and checks a window opens (needs a build first)
 npm run bench        :: measures the performance targets in docs/TESTING.md
 npm run dist         :: installer (NSIS) + portable exe into release/
 npm run dist:dir     :: unpacked build, much faster, no installer tooling
