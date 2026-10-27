@@ -25,9 +25,7 @@ export type CategoryId =
   | "dev-dependencies"
   | "build-output"
   | "recycle-bin"
-  | "windows-old"
-  | "large-files"
-  | "old-files";
+  | "windows-old";
 
 export interface CategoryDef {
   id: CategoryId;
@@ -113,22 +111,6 @@ export const CATEGORIES: Record<CategoryId, CategoryDef> = {
     whatItContains: "The Windows.old folder left by a feature update.",
     whyItGrows: "Created once per in-place upgrade and kept for the rollback window.",
     regeneration: "Cannot be regenerated. Removing it makes rolling back to the previous Windows version impossible.",
-  },
-  "large-files": {
-    id: "large-files",
-    label: "Large files",
-    risk: "review",
-    whatItContains: "The biggest individual files in this scan.",
-    whyItGrows: "Video, disk images and databases grow without anyone noticing.",
-    regeneration: "Depends entirely on the file. Size is not a reason to remove it, so each one needs a decision.",
-  },
-  "old-files": {
-    id: "old-files",
-    label: "Not modified recently",
-    risk: "review",
-    whatItContains: "Files whose last modified date is older than the chosen age.",
-    whyItGrows: "Nothing removes files that are no longer edited.",
-    regeneration: "Depends entirely on the file. See the note about last access below before treating age as evidence of disuse.",
   },
 };
 
@@ -338,67 +320,3 @@ export function summarize(findings: Finding[]): CategorySummary[] {
   return [...byCategory.values()].sort((a, b) => b.bytes - a.bytes);
 }
 
-export interface OldFileQuery {
-  minBytes: number;
-  olderThanDays: number;
-}
-
-// Files that have not been modified for a while. Deliberately reported for
-// review and never described as unused: Windows often has last-access updates
-// disabled or batched, so the access time cannot be trusted as evidence that
-// nobody opened the file.
-export function findOldFiles(view: ScanView, query: OldFileQuery, nowSeconds: number, limit: number): Finding[] {
-  const before = nowSeconds - query.olderThanDays * 86400;
-  const out: Finding[] = [];
-  for (let id = 1; id < view.n; id++) {
-    if (isDir(view, id) || !isLive(view, id)) continue;
-    const mtime = view.t.mtime[id];
-    if (mtime === 0 || mtime > before) continue;
-    if (view.t.size[id] < query.minBytes) continue;
-    out.push({
-      category: "old-files",
-      id,
-      path: view.path(id),
-      bytes: view.t.size[id],
-      files: 1,
-      risk: "review",
-      reason: `Last modified ${Math.round((nowSeconds - mtime) / 86400)} days ago`,
-      consequence:
-        "Nothing here proves the file is unused. Windows may not record last access at all, so review it before removing anything.",
-    });
-  }
-  out.sort((a, b) => b.bytes - a.bytes);
-  return out.slice(0, limit);
-}
-
-// The largest files, optionally restricted to one subtree.
-export function findLargest(view: ScanView, limit: number, within = 0): Finding[] {
-  const picked: number[] = [];
-  for (let id = 1; id < view.n; id++) {
-    if (isDir(view, id) || !isLive(view, id)) continue;
-    if (within > 0 && !contains(view, within, id)) continue;
-    picked.push(id);
-  }
-  picked.sort((a, b) => view.t.size[b] - view.t.size[a] || a - b);
-  return picked.slice(0, limit).map((id) => ({
-    category: "large-files" as CategoryId,
-    id,
-    path: view.path(id),
-    bytes: view.t.size[id],
-    files: 1,
-    risk: "review" as Risk,
-    reason: "Among the largest files in this scan",
-    consequence: "Size alone is not a reason to remove a file.",
-  }));
-}
-
-function contains(view: ScanView, ancestor: number, id: number): boolean {
-  for (let i = id; i >= 0; i = view.t.parent[i]) if (i === ancestor) return true;
-  return false;
-}
-
-// Total bytes a set of findings would free, counting only what is disjoint. The
-// cleanup planner uses this to keep its preview and its estimate in step.
-export function reclaimable(findings: Finding[]): number {
-  return findings.reduce((sum, f) => sum + f.bytes, 0);
-}

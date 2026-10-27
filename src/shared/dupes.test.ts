@@ -1,7 +1,7 @@
 import { strict as assert } from "node:assert";
 import { describe, it } from "node:test";
 import type { DupGroup } from "./types";
-import { FREE_DUPLICATE_SETS, capGroups, extraCopies, reclaimableBytes } from "./dupes";
+import { FREE_DUPLICATE_SETS, capGroups, reclaimableBytes } from "./dupes";
 
 // A lookup that reports the same size for every id, which is the ordinary case.
 const flat =
@@ -20,7 +20,6 @@ describe("reclaimable space from duplicates", () => {
   it("counts three copies as two, not three", () => {
     const groups: DupGroup[] = [{ size: 1000, ids: [1, 2, 3] }];
     assert.equal(reclaimableBytes(groups, flat(4096), anyAlive), 8192);
-    assert.equal(extraCopies(groups, anyAlive), 2);
   });
 
   it("adds up across several sets", () => {
@@ -54,10 +53,8 @@ describe("reclaimable space from duplicates", () => {
     const groups: DupGroup[] = [{ size: 700, ids: [1, 2, 3] }];
     const gone = (id: number): boolean => id === 1;
     assert.equal(reclaimableBytes(groups, flat(700), gone), 700);
-    assert.equal(extraCopies(groups, gone), 1);
     // And once two of the three are gone, one copy is left and nothing is freed.
     assert.equal(reclaimableBytes(groups, flat(700), () => true), 0);
-    assert.equal(extraCopies(groups, () => true), 0);
   });
 
   it("treats a missing or nonsensical on-disk size as nothing rather than as a negative", () => {
@@ -68,7 +65,6 @@ describe("reclaimable space from duplicates", () => {
 
   it("is zero when there is nothing to reclaim", () => {
     assert.equal(reclaimableBytes([], flat(1000), anyAlive), 0);
-    assert.equal(extraCopies([], anyAlive), 0);
   });
 });
 

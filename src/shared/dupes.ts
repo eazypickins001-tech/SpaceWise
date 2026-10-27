@@ -39,18 +39,6 @@ export function reclaimableBytes(
   return total;
 }
 
-// How many extra copies exist across the sets, which is what the sentence above
-// the list counts. Kept beside the byte figure so the two never disagree.
-export function extraCopies(groups: readonly DupGroup[], isGone: (id: number) => boolean = () => false): number {
-  let total = 0;
-  for (const group of groups) {
-    const alive = group.ids.reduce((a, id) => a + (isGone(id) ? 0 : 1), 0);
-    if (alive < 2) continue;
-    total += alive - 1;
-  }
-  return total;
-}
-
 // How many duplicate sets the free tier lists. A search returns its sets biggest
 // saving first (see main/dupfind.ts), so the cap keeps the ones worth acting on,
 // and the rest are counted rather than hidden. The premium feature

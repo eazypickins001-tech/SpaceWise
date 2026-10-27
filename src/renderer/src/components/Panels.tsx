@@ -4,7 +4,7 @@ import type { DupGroup, DupProgress, SnapshotMeta } from "../../../shared/types"
 import type { Disk } from "../lib/disk";
 import { byType, duplicateCandidates } from "../lib/analysis";
 import { FREE_DUPLICATE_SETS, capGroups, reclaimableBytes } from "../../../shared/dupes";
-import type { Comparison, FilterResult } from "../lib/analysis";
+import type { Comparison } from "../lib/analysis";
 import type { Fmt, T } from "../lib/i18n";
 import { Icon } from "./Icon";
 import { VirtualRows } from "./ui";
@@ -478,5 +478,3 @@ export const ChangesPane = memo(function ChangesPane(
     </div>
   );
 });
-
-export type { FilterResult };

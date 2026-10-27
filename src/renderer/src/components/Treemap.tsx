@@ -2,7 +2,7 @@ import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from "rea
 import type { Disk } from "../lib/disk";
 import type { Comparison } from "../lib/analysis";
 import type { Fmt, T } from "../lib/i18n";
-import { HEADER, K_DIR, K_DIR_LABELLED, K_FILE, K_PACK, K_REST, findRect, hitTest, layoutTreemap } from "../lib/treemap";
+import { HEADER, K_DIR_LABELLED, K_FILE, K_PACK, K_REST, findRect, hitTest, layoutTreemap } from "../lib/treemap";
 import type { Layout } from "../lib/treemap";
 
 const FONT = '12px "Barlow", "Bahnschrift", "Segoe UI", sans-serif';
@@ -542,5 +542,3 @@ export const Treemap = memo(function Treemap(p: Props) {
     </div>
   );
 });
-
-export { K_DIR };

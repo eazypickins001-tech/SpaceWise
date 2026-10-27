@@ -3,8 +3,8 @@
 // makes a folder a candidate, and nested candidates are never double counted.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { F_DIR, F_LINK } from "./types";
-import { analyzeStorage, findLargest, findOldFiles, reclaimable, summarize } from "./storage-intelligence";
+import { F_LINK } from "./types";
+import { analyzeStorage, summarize } from "./storage-intelligence";
 import { view } from "./test-fixtures";
 
 const MB = 1024 * 1024;
@@ -78,7 +78,7 @@ test("nested candidates are counted once, at the outermost folder", () => {
   const found = analyzeStorage(v);
   assert.equal(found.length, 1, "the inner tree is not a second candidate");
   assert.equal(found[0].bytes, 100 * MB, "the outer total already includes the inner bytes");
-  assert.equal(reclaimable(found), 100 * MB, "the reclaimable figure is not inflated by nesting");
+  assert.equal(found.reduce((sum, f) => sum + f.bytes, 0), 100 * MB, "the reclaimable figure is not inflated by nesting");
 });
 
 test("a candidate below the size floor is not reported", () => {
@@ -182,68 +182,4 @@ test("summarize groups by category, biggest first, with additive totals", () => 
   assert.equal(rows[0].ids.length, 2);
   assert.equal(rows[1].category, "tool-cache");
   assert.equal(rows[0].def.risk, "low");
-});
-
-test("reclaimable is the sum of the findings, which are disjoint by construction", () => {
-  const v = view("C:\\", {
-    name: "",
-    children: [
-      { name: "node_modules", children: [{ name: "x", size: 10 * MB }] },
-      { name: "$Recycle.Bin", children: [{ name: "y", size: 4 * MB }] },
-    ],
-  });
-  const found = analyzeStorage(v);
-  assert.equal(found.length, 2);
-  assert.equal(reclaimable(found), 14 * MB);
-});
-
-test("old files are reported with the age that produced them", () => {
-  const now = 1_700_000_000;
-  const v = view("C:\\docs", {
-    name: "",
-    children: [
-      { name: "old.pdf", size: 5 * MB, mtime: now - 400 * 86400 },
-      { name: "new.pdf", size: 5 * MB, mtime: now - 2 * 86400 },
-    ],
-  });
-  const found = findOldFiles(v, { minBytes: MB, olderThanDays: 365 }, now, 10);
-  assert.equal(found.length, 1, "only the file past the age limit");
-  assert.match(found[0].reason, /400 days/);
-  assert.equal(found[0].category, "old-files");
-  assert.equal(found[0].risk, "review");
-  assert.match(found[0].consequence, /last access/, "the unreliable access time is disclosed, not hidden");
-});
-
-test("a file with no recorded change time is not called old", () => {
-  const now = 1_700_000_000;
-  const v = view("C:\\docs", {
-    name: "",
-    children: [{ name: "unknown.pdf", size: 5 * MB, mtime: 0 }],
-  });
-  assert.deepEqual(findOldFiles(v, { minBytes: MB, olderThanDays: 1 }, now, 10), []);
-});
-
-test("the largest files come back biggest first and can be scoped to a subtree", () => {
-  const v = view("C:\\", {
-    name: "",
-    children: [
-      { name: "big", children: [{ name: "a.bin", size: 90 * MB }] },
-      { name: "small", children: [{ name: "b.bin", size: 20 * MB }, { name: "c.bin", size: 40 * MB }] },
-    ],
-  });
-  const all = findLargest(v, 10);
-  assert.deepEqual(all.map((f) => f.bytes), [90 * MB, 40 * MB, 20 * MB]);
-
-  // Node order is preorder: 0 root, 1 big, 2 a.bin, 3 small, 4 b.bin, 5 c.bin.
-  const small = 3;
-  const smallOnly = findLargest(v, 10, small);
-  assert.deepEqual(smallOnly.map((f) => f.bytes), [40 * MB, 20 * MB], "scoping excludes the other subtree");
-});
-
-test("folders are never returned as large files", () => {
-  const v = view("C:\\", {
-    name: "",
-    children: [{ name: "huge", children: [{ name: "a.bin", size: 500 * MB }] }],
-  });
-  for (const f of findLargest(v, 10)) assert.equal(v.t.flags[f.id] & F_DIR, 0);
 });
