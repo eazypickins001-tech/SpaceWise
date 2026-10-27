@@ -1,4 +1,4 @@
-import { memo, useMemo, useRef, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent } from "react";
 import type { Disk } from "../lib/disk";
 import type { Fmt, T } from "../lib/i18n";
@@ -23,10 +23,11 @@ interface Props {
   onHover: (id: number) => void;
   onZoom: (id: number) => void;
   onContext: (id: number, x: number, y: number) => void;
-  onTrash: (id: number) => void;
+  onTrash?: (ids: number[]) => void;
 }
 
-const NARROW = "minmax(0, 1fr) 74px 104px 64px";
+const PICK = "30px";
+const NARROW = PICK + " minmax(0, 1fr) 74px 104px 64px";
 const WIDE = NARROW + " 88px";
 
 export const TreeView = memo(function TreeView(p: Props) {
@@ -69,6 +70,33 @@ export const TreeView = memo(function TreeView(p: Props) {
     return { ids, depths };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [disk, p.version, expanded, sort]);
+
+  // Which rows are ticked for a bulk delete. Nothing is ticked to begin with,
+  // the root is never offered, and whatever leaves the disk leaves the
+  // selection with it.
+  const [picked, setPicked] = useState<Set<number>>(() => new Set());
+  useEffect(
+    () =>
+      setPicked((c) => {
+        const next = new Set([...c].filter((id) => id > 0 && !disk.isGone(id)));
+        return next.size === c.size ? c : next;
+      }),
+    [disk, p.version],
+  );
+  const deletable = useMemo(() => ids.filter((id) => id > 0), [ids]);
+  const pickedBytes = [...picked].reduce((sum, id) => sum + disk.size(id), 0);
+  const allPicked = deletable.length > 0 && deletable.every((id) => picked.has(id));
+  const togglePick = (id: number): void =>
+    setPicked((c) => {
+      const next = new Set(c);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  const pickAll = (): void => setPicked(new Set(deletable));
+  const trashPicked = (): void => {
+    if (picked.size > 0) p.onTrash?.([...picked]);
+  };
 
   const revealIndex = useMemo(
     () => (p.reveal > 0 ? ids.indexOf(p.selected) : -1),
@@ -120,7 +148,8 @@ export const TreeView = memo(function TreeView(p: Props) {
         if (id >= 0) p.onZoom(disk.isDir(id) ? id : disk.parent(id));
         break;
       case "Delete":
-        if (id > 0) p.onTrash(id);
+        if (picked.size > 0) p.onTrash?.([...picked]);
+        else if (id > 0) p.onTrash?.([id]);
         break;
       default:
         return;
@@ -140,7 +169,20 @@ export const TreeView = memo(function TreeView(p: Props) {
 
   return (
     <div className="pane">
+      <div className="pane-bar">
+        <button className="btn quiet" onClick={pickAll} disabled={deletable.length === 0 || allPicked}>
+          {t("cleanup.selectAll")}
+        </button>
+        <span className="dim" style={{ marginLeft: "auto", marginRight: 8 }}>
+          {t("cleanup.selected", { count: fmt.count(picked.size), bytes: fmt.bytes(pickedBytes) })}
+        </span>
+        <button className="btn" disabled={picked.size === 0 || !p.onTrash} onClick={trashPicked}>
+          <Icon name="trash" />
+          {t("act.trash")}
+        </button>
+      </div>
       <div className="thead" style={{ gridTemplateColumns: GRID }}>
+        <button disabled style={{ cursor: "default" }} aria-hidden="true" />
         {head("name", t("col.name"), false)}
         {head("size", t("col.size"), true)}
         <button disabled style={{ cursor: "default" }}>
@@ -181,6 +223,18 @@ export const TreeView = memo(function TreeView(p: Props) {
                 p.onContext(id, e.clientX, e.clientY);
               }}
             >
+              <div className="pick">
+                {id > 0 && (
+                  <input
+                    type="checkbox"
+                    checked={picked.has(id)}
+                    aria-label={disk.name(id)}
+                    onMouseDown={(e) => e.stopPropagation()}
+                    onDoubleClick={(e) => e.stopPropagation()}
+                    onChange={() => togglePick(id)}
+                  />
+                )}
+              </div>
               <div className="cell-name" style={{ paddingLeft: depths[i] * 14 }}>
                 {dir && disk.children(id).length > 0 ? (
                   <button

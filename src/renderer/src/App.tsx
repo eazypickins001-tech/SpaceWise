@@ -559,7 +559,6 @@ export function App() {
   );
 
   const askTrash = useCallback((ids: number[]) => setTrash(ids), []);
-  const askTrashOne = useCallback((id: number) => setTrash([id]), []);
 
   // A cleanup run reports paths, not node ids, so the window matches them back
   // to the tree it is showing and takes only what really went off screen.
@@ -1555,7 +1554,7 @@ export function App() {
                   onHover={setHover}
                   onZoom={zoomTo}
                   onContext={context}
-                  onTrash={can.trash ? askTrashOne : () => undefined}
+                  onTrash={can.trash ? askTrash : undefined}
                 />
               )}
               {panes}

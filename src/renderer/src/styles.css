@@ -706,6 +706,12 @@ p {
 .trow .dim {
   color: var(--ink-2);
 }
+.trow .pick {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
 .trow.hot {
   background: var(--t1);
 }
