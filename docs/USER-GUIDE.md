@@ -194,10 +194,15 @@ version dangerous, so it is not behind one.
 A licence adds:
 
 - **Comparing scans** — what changed between two scans of the same folder.
-- **The optional written summary.**
+- **Unlimited duplicate results** — without a licence the duplicate list shows the twenty sets
+  worth the most and tells you how many it left out and what they hold. A licence lifts that cap.
+- **The optional written summary**, and the **Ask** button beside a finding.
 
-Four further premium features are declared in the code but not yet attached to anything, so they
-currently unlock nothing. That is stated here rather than left as a surprise.
+Everything the Licence sheet lists is attached to code, so nothing advertised there is decoration.
+An earlier version advertised three features that did not exist; those were removed rather than
+left as promises, and one that had no code behind it was built instead.
+
+A printable version of this guide, for handing to someone, is `docs/user-guide.html`.
 
 **Where to put a licence.** The **Licence** sheet, from the menu. Paste the key you were given.
 
