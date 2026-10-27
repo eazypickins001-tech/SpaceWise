@@ -17,7 +17,7 @@ import { TreeView } from "./components/TreeView";
 import { ChangesPane, DupesPane, ListPane, TypesPane } from "./components/Panels";
 import { CleanupPane } from "./components/Cleanup";
 import { LicenseDialog, PremiumGate } from "./components/License";
-import { NO_LICENSE } from "../../shared/entitlements";
+import { NO_LICENSE, hasFeature } from "../../shared/entitlements";
 import type { LicenseState } from "../../shared/entitlements";
 import type { DupState } from "./components/Panels";
 import { AppSheet, AppsPane, CleanPane } from "./components/Phone";
@@ -1153,7 +1153,7 @@ export function App() {
       )}
       {tab === "dupes" && <DupesPane {...pane} state={dups} setState={setDups} onTrash={can.trash ? askTrash : undefined} />}
       {tab === "changes" &&
-        (licence.pro ? (
+        (hasFeature(licence, "compare.scans") ? (
           <ChangesPane {...pane} comparison={comparison} snapshots={snapshots} against={against} onAgainst={setAgainst} />
         ) : (
           <PremiumGate what={t("tab.changes")} t={t} onOpen={() => setDialog("licence")} />

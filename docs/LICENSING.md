@@ -18,10 +18,6 @@ part of the product, and putting it behind a paywall would make the free version
 | `history.local` | Free |
 | `duplicates.basic` | Free |
 | `compare.scans` | Premium |
-| `monitor.growth` | Premium |
-| `report.export` | Premium |
-| `filters.advanced` | Premium |
-| `duplicates.unlimited` | Premium |
 | `ai.summary` | Premium |
 
 The keys live in `src/main/license.ts` as `FREE_FEATURES` and `PRO_FEATURES`, so the boundary
@@ -156,9 +152,10 @@ breakdown, reviewed cleanup with the full safety model, local history and duplic
 - **No activation, deactivation or revocation.** With no server, a licence cannot be revoked
   once issued. Seat limits are therefore not enforced; `seats` is reserved in the payload.
 - **No trial period.** The free tier is intended to make a time-limited trial unnecessary.
-- **Two premium features are wired; four are not.** `compare.scans` gates the Changes view and
-  `ai.summary` gates the optional storage summary. `monitor.growth`, `report.export`,
-  `filters.advanced` and `duplicates.unlimited` are declared and tested but attached to
-  nothing, so they currently unlock nothing.
+- **Both premium features are wired.** `compare.scans` gates the Changes view (through
+  `hasFeature`, so the entitlements table is the single source of truth) and `ai.summary` gates
+  the optional storage summary. Four further ids -- `monitor.growth`, `report.export`,
+  `filters.advanced`, `duplicates.unlimited` -- were once declared and shown as Premium without
+  being attached to anything; they were removed rather than advertised, and unlock nothing today.
 - If an optional AI feature is ever added, its provider cost must be shown to the user and its
   key must live behind a backend, never in the client.

@@ -53,14 +53,12 @@ export const FREE_FEATURES = new Set([
   "duplicates.basic",
 ]);
 
-export const PRO_FEATURES = new Set([
-  "compare.scans",
-  "monitor.growth",
-  "report.export",
-  "filters.advanced",
-  "duplicates.unlimited",
-  "ai.summary",
-]);
+// Only what the application actually gates. Four ids -- monitor.growth,
+// report.export, filters.advanced, duplicates.unlimited -- were once declared
+// here and shown to the user as Premium without being attached to any code. They
+// were removed rather than advertised, and return when the code that enforces
+// them does.
+export const PRO_FEATURES = new Set(["compare.scans", "ai.summary"]);
 
 export function featuresFor(state: LicenseState): Set<string> {
   return state.pro ? new Set([...FREE_FEATURES, ...PRO_FEATURES]) : new Set(FREE_FEATURES);

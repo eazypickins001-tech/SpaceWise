@@ -199,8 +199,8 @@ test("a licence adds the premium features without removing the free ones", () =>
   const paid = featuresFor(state);
   assert.ok(paid.has("scan.run"), "the free features are still there");
   assert.ok(paid.has("compare.scans"));
-  assert.equal(hasFeature(state, "monitor.growth"), true);
-  assert.equal(hasFeature(state, "monitor.growth") && state.pro, true);
+  assert.equal(hasFeature(state, "compare.scans"), true);
+  assert.equal(hasFeature(state, "compare.scans") && state.pro, true);
 });
 
 test("an expired licence still reports the free feature set", () => {
@@ -210,7 +210,7 @@ test("an expired licence still reports the free feature set", () => {
     machine: null,
   });
   assert.equal(hasFeature(state, "scan.run"), true);
-  assert.equal(hasFeature(state, "report.export"), false);
+  assert.equal(hasFeature(state, "compare.scans"), false);
 });
 
 test("machineId is stable for the same parts and differs for different ones", () => {

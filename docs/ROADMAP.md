@@ -95,7 +95,7 @@ Duplicate detection is not yet tested against planted byte-identical files, and 
 | Vendor key tooling | **Done** — `npm run keygen`, verified end to end against the app's verifier |
 | Licence key generated and embedded | **Not done — needs the owner's private key**, which cannot be created for them |
 | Payment provider | **Not done** |
-| More than one feature gated | **Not done** — five premium feature ids are declared and tested but attached to nothing |
+| More than one feature gated | **Done** — `compare.scans` gates the Changes view and `ai.summary` the optional summary |
 
 `EMBEDDED_PUBLIC_KEY` now carries a real vendor public key, so a licence unlocks the premium
 features. `npm run verify:licence` proves a build accepts the licences signed with that key;
