@@ -160,6 +160,9 @@ export function App() {
   const [toast, setToast] = useState<string | null>(null);
   const [dropping, setDropping] = useState(false);
   const [appVersion, setAppVersion] = useState("");
+  // Which build this is. The version number never changes between builds, so
+  // without this "is this the copy I just built?" has no answer on screen.
+  const [appBuild, setAppBuild] = useState("");
   const askedUpdate = useRef(false);
   const view = useRef({ disk, zoom, selected, expanded, trail, menu, barFocus });
   view.current = { disk, zoom, selected, expanded, trail, menu, barFocus };
@@ -212,7 +215,10 @@ export function App() {
   }, []);
   useEffect(() => {
     refreshDrives();
-    void window.api.info().then((i) => setAppVersion(i.version));
+    void window.api.info().then((i) => {
+      setAppVersion(i.version);
+      setAppBuild(i.build);
+    });
     const timer = setTimeout(() => void window.api.checkUpdate(), 4000);
     return () => clearTimeout(timer);
   }, [refreshDrives]);
@@ -1985,6 +1991,9 @@ export function App() {
                   <Wordmark size={30} />
                 </div>
                 <div>{t("about.line", { version: appVersion })}</div>
+                <div className="dim" style={{ fontSize: 12 }}>
+                  {t("about.build", { build: appBuild || "—" })}
+                </div>
                 <div>
                   {t("about.contact")}{" "}
                   <a

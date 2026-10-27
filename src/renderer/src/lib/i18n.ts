@@ -427,6 +427,7 @@ const en = {
   "upd.error": "The update check failed: {why}",
 
   "about.line": "Version {version}. Free and open source under the MIT license.",
+  "about.build": "Build {build}",
   "about.contact": "Questions or bug reports:",
   "about.upstream": "Based on the open-source project by Rodrigo Sanguanini:",
   "copied": "Path copied",
@@ -862,6 +863,7 @@ const pt: Record<Key, string> = {
   "upd.error": "Não deu para verificar atualizações: {why}",
 
   "about.line": "Versão {version}. Grátis e de código aberto, licença MIT.",
+  "about.build": "Compilação {build}",
   "about.contact": "Dúvidas ou problemas:",
   "about.upstream": "Baseado no projeto de código aberto de Rodrigo Sanguanini:",
   "copied": "Caminho copiado",

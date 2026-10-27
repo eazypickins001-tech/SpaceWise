@@ -791,10 +791,15 @@ ipcMain.handle("win:toggleFullScreen", (e) => {
 });
 ipcMain.handle("win:devtools", (e) => sessionOf(e)?.win.webContents.toggleDevTools());
 
+// Injected by electron.vite.config.ts. `typeof` guards a bundle built without it,
+// so this can never throw, and "dev" is honest for an unstamped one.
+const BUILD = typeof __BUILD__ === "string" ? __BUILD__ : "dev";
+
 ipcMain.handle("app:info", () => ({
   version: app.getVersion(),
   platform: process.platform,
   home: app.getPath("home"),
+  build: BUILD,
 }));
 ipcMain.handle("app:quit", () => app.quit());
 

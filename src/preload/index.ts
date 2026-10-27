@@ -115,7 +115,9 @@ const api = {
   setOverlay: (symbolColor: string): Promise<void> => ipcRenderer.invoke("win:setOverlay", symbolColor),
   toggleFullScreen: (): Promise<void> => ipcRenderer.invoke("win:toggleFullScreen"),
   toggleDevTools: (): Promise<void> => ipcRenderer.invoke("win:devtools"),
-  info: (): Promise<{ version: string; platform: string; home: string }> => ipcRenderer.invoke("app:info"),
+  // `build` is the commit and time this bundle was built, so the About box can
+  // say which build is running rather than only which version.
+  info: (): Promise<{ version: string; platform: string; home: string; build: string }> => ipcRenderer.invoke("app:info"),
   quit: (): Promise<void> => ipcRenderer.invoke("app:quit"),
 
   checkUpdate: (): Promise<void> => ipcRenderer.invoke("upd:check"),
