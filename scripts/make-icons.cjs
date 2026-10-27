@@ -49,8 +49,8 @@ function ico(images) {
   return Buffer.concat([header, ...images.map((i) => i.png)]);
 }
 
-// The blocks of the mark, without the white square behind them.
-const blocks = svg.split("\n").filter((l) => l.includes("<path") && !l.includes('fill="#ffffff"')).join("\n");
+// The blocks of the mark, without the field behind them.
+const blocks = svg.split("\n").filter((l) => l.includes("<path") && !l.includes('fill="#1930b0"')).join("\n");
 
 // Draws the mark centred on a sheet: `share` is how much of the shorter side it takes.
 function sheet(w, h, share, background) {
@@ -105,10 +105,14 @@ app.whenReady().then(async () => {
   for (const size of SIZES) images.push({ size, png: await render(size) });
   writeFileSync(join(root, "build/icon.png"), await render(LARGE));
   writeFileSync(join(root, "build/icon.ico"), ico(images));
-  mkdirSync(join(root, "site"), { recursive: true });
-  writeFileSync(join(root, "site/favicon.ico"), ico(images.filter((i) => i.size <= 48)));
-  writeFileSync(join(root, "site/icon-256.png"), images[images.length - 1].png);
-  writeFileSync(join(root, "site/icon.svg"), svg);
+  // The marketing site and the Android surface are not part of this repository.
+  // They are written only when they are already there, so running this cannot
+  // invent a directory the project does not use.
+  if (existsSync(join(root, "site"))) {
+    writeFileSync(join(root, "site/favicon.ico"), ico(images.filter((i) => i.size <= 48)));
+    writeFileSync(join(root, "site/icon-256.png"), images[images.length - 1].png);
+    writeFileSync(join(root, "site/icon.svg"), svg);
+  }
   if (existsSync(join(root, "android"))) await android();
   console.log("icons written");
   } catch (e) {

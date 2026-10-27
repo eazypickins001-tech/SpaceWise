@@ -86,16 +86,31 @@ export function Wordmark({ size = 18 }: { size?: number }) {
   );
 }
 
-// The mark: a treemap in miniature. Each block is half the one before it and
-// the ink runs from strong to weak, so it follows the theme.
+// The mark: a treemap in miniature with one tile lifted out of its bottom-right
+// corner. That gap is the product in one shape — this is what the disk holds, and
+// this is the part you can get back. Right angles only, and the ink runs from
+// strong to weak so it follows the theme.
+//
+// Below 28px the field is split once instead of twice. Measured on a contact
+// sheet across all four themes: at title-bar size the third tile and the second
+// gap turn to mush, and the empty corner stops reading as deliberate. A mark that
+// cannot be read at 18px is decoration, so the small size drops detail and keeps
+// the silhouette.
 export function Mark({ size = 18 }: { size?: number }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 32 32" aria-hidden="true">
-      <path d="M2 2h13v28H2z" fill="var(--t5)" />
-      <path d="M17 2h13v13H17z" fill="var(--t4)" />
-      <path d="M17 17h6v13h-6z" fill="var(--t3)" />
-      <path d="M25 17h5v6h-5z" fill="var(--t2)" />
-      <path d="M25 25h5v5h-5z" fill="var(--t2)" opacity="0.6" />
+    <svg width={size} height={size} viewBox="0 0 32 32" aria-hidden="true" shapeRendering="crispEdges">
+      {size >= 28 ? (
+        <>
+          <path d="M2 2h13v28H2z" fill="var(--t5)" />
+          <path d="M17 2h13v17H17z" fill="var(--t4)" />
+          <path d="M17 21h5v9H17z" fill="var(--t3)" />
+        </>
+      ) : (
+        <>
+          <path d="M2 2h17v28H2z" fill="var(--t5)" />
+          <path d="M23 2h7v15H23z" fill="var(--t4)" />
+        </>
+      )}
     </svg>
   );
 }
