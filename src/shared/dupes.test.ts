@@ -1,7 +1,7 @@
 import { strict as assert } from "node:assert";
 import { describe, it } from "node:test";
 import type { DupGroup } from "./types";
-import { extraCopies, reclaimableBytes } from "./dupes";
+import { FREE_DUPLICATE_SETS, capGroups, extraCopies, reclaimableBytes } from "./dupes";
 
 // A lookup that reports the same size for every id, which is the ordinary case.
 const flat =
@@ -69,5 +69,37 @@ describe("reclaimable space from duplicates", () => {
   it("is zero when there is nothing to reclaim", () => {
     assert.equal(reclaimableBytes([], flat(1000), anyAlive), 0);
     assert.equal(extraCopies([], anyAlive), 0);
+  });
+});
+
+describe("capping the sets the free tier lists", () => {
+  const set = (size: number): DupGroup => ({ size, ids: [size, size + 1] });
+
+  it("draws every set when there are fewer than the cap", () => {
+    const { shown, hidden } = capGroups([set(1), set(2)], FREE_DUPLICATE_SETS);
+    assert.equal(shown.length, 2);
+    assert.equal(hidden, 0);
+  });
+
+  it("keeps the largest sets and counts the rest", () => {
+    const { shown, hidden } = capGroups([set(5), set(4), set(3), set(2), set(1)], 3);
+    assert.deepEqual(
+      shown.map((g) => g.size),
+      [5, 4, 3],
+    );
+    assert.equal(hidden, 2);
+  });
+
+  it("draws everything when the cap is lifted", () => {
+    const { shown, hidden } = capGroups([set(1), set(2), set(3)], Number.POSITIVE_INFINITY);
+    assert.equal(shown.length, 3);
+    assert.equal(hidden, 0);
+  });
+
+  it("hands back a copy, so a caller cannot disturb the search's own list", () => {
+    const groups = [set(1)];
+    const { shown } = capGroups(groups, 5);
+    assert.notEqual(shown, groups);
+    assert.deepEqual(shown, groups);
   });
 });

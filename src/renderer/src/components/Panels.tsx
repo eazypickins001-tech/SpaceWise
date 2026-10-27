@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import type { DupGroup, DupProgress, SnapshotMeta } from "../../../shared/types";
 import type { Disk } from "../lib/disk";
 import { byType, duplicateCandidates } from "../lib/analysis";
-import { reclaimableBytes } from "../../../shared/dupes";
+import { FREE_DUPLICATE_SETS, capGroups, reclaimableBytes } from "../../../shared/dupes";
 import type { Comparison, FilterResult } from "../lib/analysis";
 import type { Fmt, T } from "../lib/i18n";
 import { Icon } from "./Icon";
@@ -185,7 +185,13 @@ export interface DupState {
 }
 
 export const DupesPane = memo(function DupesPane(
-  p: PaneProps & { state: DupState; setState: (s: DupState) => void; onTrash?: (ids: number[]) => void },
+  p: PaneProps & {
+    state: DupState;
+    setState: (s: DupState) => void;
+    onTrash?: (ids: number[]) => void;
+    unlimited?: boolean;
+    onLicence?: () => void;
+  },
 ) {
   const { disk, fmt, t, state, setState } = p;
   const [min, setMin] = useState(10 * MB);
@@ -206,23 +212,36 @@ export const DupesPane = memo(function DupesPane(
     void window.api.startDuplicates(duplicateCandidates(disk, min));
   };
 
-  const rows = useMemo(() => {
-    const out: ({ group: number; size: number; count: number } | { id: number })[] = [];
-    state.groups.forEach((g, gi) => {
-      const alive = g.ids.filter((id) => !disk.isGone(id));
-      if (alive.length < 2) return;
-      out.push({ group: gi, size: g.size, count: alive.length });
-      for (const id of alive) out.push({ id });
-    });
-    return out;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.groups, disk, p.version]);
+  // The sets still worth drawing: one that is down to a single copy is no longer
+  // a duplicate, and the free tier lists only the largest FREE_DUPLICATE_SETS of
+  // what remains. A search returns its sets biggest saving first, so the cap
+  // keeps the ones worth acting on and the rest are counted, not hidden.
+  //
   // The saving is worked out from the copies that are still there, using what
   // they occupy on disk rather than the length they share: for a compressed or
   // sparse copy those are different numbers, and the space someone gets back is
   // the space the copy took. See shared/dupes.ts.
-  const wasted = reclaimableBytes(state.groups, (id) => disk.t.size[id], disk.isGone);
-  const sets = rows.filter((r) => "group" in r).length;
+  const { shown, hidden, hiddenBytes } = useMemo(() => {
+    const alive = state.groups
+      .map((g) => ({ size: g.size, ids: g.ids.filter((id) => !disk.isGone(id)) }))
+      .filter((g) => g.ids.length >= 2);
+    const { shown: kept, hidden: left } = capGroups(alive, p.unlimited ? Number.POSITIVE_INFINITY : FREE_DUPLICATE_SETS);
+    const of = (id: number): number => disk.t.size[id];
+    return { shown: kept, hidden: left, hiddenBytes: reclaimableBytes(alive, of, disk.isGone) - reclaimableBytes(kept, of, disk.isGone) };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.groups, disk, p.version, p.unlimited]);
+
+  const rows = useMemo(() => {
+    const out: ({ group: number; size: number; count: number } | { id: number })[] = [];
+    shown.forEach((g, gi) => {
+      out.push({ group: gi, size: g.size, count: g.ids.length });
+      for (const id of g.ids) out.push({ id });
+    });
+    return out;
+  }, [shown]);
+
+  const wasted = reclaimableBytes(shown, (id) => disk.t.size[id], disk.isGone);
+  const sets = shown.length;
 
   const picker = (
     <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -296,6 +315,16 @@ export const DupesPane = memo(function DupesPane(
           {t("dupes.again")}
         </button>
       </div>
+      {hidden > 0 && (
+        <div className="pane-note" style={{ display: "flex", alignItems: "center", gap: 12, maxWidth: "none" }}>
+          <span style={{ flex: 1 }}>{t("dupes.capped", { sets: fmt.count(hidden), bytes: fmt.bytes(hiddenBytes) })}</span>
+          {p.onLicence && (
+            <button className="btn" onClick={p.onLicence}>
+              {t("lic.gated.open")}
+            </button>
+          )}
+        </div>
+      )}
       <VirtualRows
         count={rows.length}
         label={t("tab.dupes")}

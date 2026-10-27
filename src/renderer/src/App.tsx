@@ -1151,7 +1151,16 @@ export function App() {
           onSelect={(a) => setAppPkg(a.pkg)}
         />
       )}
-      {tab === "dupes" && <DupesPane {...pane} state={dups} setState={setDups} onTrash={can.trash ? askTrash : undefined} />}
+      {tab === "dupes" && (
+        <DupesPane
+          {...pane}
+          state={dups}
+          setState={setDups}
+          onTrash={can.trash ? askTrash : undefined}
+          unlimited={hasFeature(licence, "duplicates.unlimited")}
+          onLicence={() => setDialog("licence")}
+        />
+      )}
       {tab === "changes" &&
         (hasFeature(licence, "compare.scans") ? (
           <ChangesPane {...pane} comparison={comparison} snapshots={snapshots} against={against} onAgainst={setAgainst} />

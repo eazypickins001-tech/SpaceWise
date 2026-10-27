@@ -284,6 +284,7 @@ const en = {
   "feature.history.local": "Local scan history",
   "feature.duplicates.basic": "Duplicate detection",
   "feature.compare.scans": "Compare scans and see what grew",
+  "feature.duplicates.unlimited": "Unlimited duplicate results",
   "feature.ai.summary": "Optional AI storage summaries",
   "cleanup.close": "Close",
   "sort.oldest": "Oldest",
@@ -390,6 +391,7 @@ const en = {
   "dupes.hashing": "Reading {bytes} of {total}",
   "dupes.none": "No duplicates at this size. Try a smaller minimum.",
   "dupes.summary": "{groups} sets, {bytes} wasted",
+  "dupes.capped": "{sets} more sets are not shown ({bytes} to reclaim). Unlimited duplicate results is a Premium feature.",
   "dupes.copies": "{count} copies",
   "dupes.again": "Search again",
 
@@ -731,6 +733,7 @@ const pt: Record<Key, string> = {
   "feature.history.local": "Histórico local de varreduras",
   "feature.duplicates.basic": "Detecção de duplicados",
   "feature.compare.scans": "Comparar varreduras e ver o que cresceu",
+  "feature.duplicates.unlimited": "Resultados de duplicados sem limite",
   "feature.ai.summary": "Resumos de armazenamento com IA, opcionais",
   "cleanup.close": "Fechar",
   "sort.oldest": "Mais antigos",
@@ -837,6 +840,7 @@ const pt: Record<Key, string> = {
   "dupes.hashing": "Lendo {bytes} de {total}",
   "dupes.none": "Nenhum duplicado neste tamanho. Tente um mínimo menor.",
   "dupes.summary": "{groups} conjuntos, {bytes} desperdiçados",
+  "dupes.capped": "{sets} conjuntos a mais não são mostrados ({bytes} a recuperar). Resultados de duplicados sem limite é um recurso Premium.",
   "dupes.copies": "{count} cópias",
   "dupes.again": "Procurar de novo",
 

@@ -50,3 +50,15 @@ export function extraCopies(groups: readonly DupGroup[], isGone: (id: number) =>
   }
   return total;
 }
+
+// How many duplicate sets the free tier lists. A search returns its sets biggest
+// saving first (see main/dupfind.ts), so the cap keeps the ones worth acting on,
+// and the rest are counted rather than hidden. The premium feature
+// "duplicates.unlimited" lifts it.
+export const FREE_DUPLICATE_SETS = 20;
+
+// The sets to draw and how many were left out. Pass Infinity to lift the cap.
+export function capGroups(groups: readonly DupGroup[], limit: number): { shown: DupGroup[]; hidden: number } {
+  if (groups.length <= limit) return { shown: groups.slice(), hidden: 0 };
+  return { shown: groups.slice(0, limit), hidden: groups.length - limit };
+}
