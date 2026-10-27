@@ -1107,7 +1107,14 @@ export function App() {
   );
   const panes = disk && (
     <>
-      {tab === "largest" && <ListPane {...pane} ids={largest} note={t("largest.note", { count: fmt.count(largest.length) })} />}
+      {tab === "largest" && (
+        <ListPane
+          {...pane}
+          ids={largest}
+          note={t("largest.note", { count: fmt.count(largest.length) })}
+          onTrash={can.trash ? askTrash : undefined}
+        />
+      )}
       {tab === "types" && (
         <TypesPane {...pane} activeExt={filter.extId} onPick={(extId) => setFilter((f) => ({ ...f, extId }))} />
       )}
@@ -1156,6 +1163,7 @@ export function App() {
           {...pane}
           ids={found.ids}
           empty={t("found.none")}
+          onTrash={can.trash ? askTrash : undefined}
           note={
             <>
               <strong>{t("found.summary", { count: fmt.count(found.total), bytes: fmt.bytes(found.bytes) })}</strong>

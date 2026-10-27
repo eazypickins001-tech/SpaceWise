@@ -54,9 +54,11 @@ function ItemRow(p: PaneProps & { id: number; top: number; grid: string; childre
 
 // Largest files, and search results ------------------------------------------
 
-const LIST_GRID = "minmax(0, 1fr) 78px 86px";
+const LIST_GRID = "minmax(0, 1fr) 78px 86px 34px";
 
-export const ListPane = memo(function ListPane(p: PaneProps & { ids: number[]; note: ReactNode; empty?: string }) {
+export const ListPane = memo(function ListPane(
+  p: PaneProps & { ids: number[]; note: ReactNode; empty?: string; onTrash?: (ids: number[]) => void },
+) {
   const { fmt, t, disk } = p;
   return (
     <div className="pane">
@@ -74,15 +76,39 @@ export const ListPane = memo(function ListPane(p: PaneProps & { ids: number[]; n
             <button disabled className="num">
               {t("col.modified")}
             </button>
+            <button disabled />
           </div>
           <VirtualRows
             count={p.ids.length}
             label={t("tab.largest")}
             onLeave={() => p.onHover(-1)}
+            onKeyDown={(e) => {
+              // The grid owns the key while it holds focus, so Delete is handled
+              // here rather than left to the window (whose handler stands aside
+              // for anything inside .rows).
+              if (e.key === "Delete" && p.selected > 0 && !disk.isGone(p.selected)) {
+                p.onTrash?.([p.selected]);
+                e.preventDefault();
+              }
+            }}
             render={(i, top) => (
               <ItemRow key={p.ids[i]} {...p} id={p.ids[i]} top={top} grid={LIST_GRID}>
                 <div className="num">{fmt.bytes(disk.size(p.ids[i]))}</div>
                 <div className="num dim">{fmt.date(disk.t.mtime[p.ids[i]])}</div>
+                <div style={{ padding: 0 }}>
+                  {p.onTrash && (
+                    <button
+                      className="btn quiet icon"
+                      style={{ height: 24, color: "inherit" }}
+                      title={t("act.trash")}
+                      aria-label={t("act.trash")}
+                      onMouseDown={(e) => e.stopPropagation()}
+                      onClick={() => p.onTrash?.([p.ids[i]])}
+                    >
+                      <Icon name="trash" />
+                    </button>
+                  )}
+                </div>
               </ItemRow>
             )}
           />
