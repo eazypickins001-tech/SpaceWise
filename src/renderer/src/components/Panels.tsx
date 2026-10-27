@@ -23,7 +23,8 @@ export interface PaneProps {
 }
 
 // One file or folder with the folder it lives in, shared by most lists.
-function ItemRow(p: PaneProps & { id: number; top: number; grid: string; children: ReactNode }) {
+// `lead` is a cell before the name, used by the lists that can tick rows.
+function ItemRow(p: PaneProps & { id: number; top: number; grid: string; lead?: ReactNode; children: ReactNode }) {
   const { disk, id } = p;
   const dir = disk.isDir(id);
   const parent = disk.parent(id);
@@ -42,6 +43,7 @@ function ItemRow(p: PaneProps & { id: number; top: number; grid: string; childre
         p.onContext(id, e.clientX, e.clientY);
       }}
     >
+      {p.lead}
       <div className="cell-name" style={{ paddingLeft: 8 }}>
         <Icon name={dir ? "folder" : "file"} className="glyph" />
         <span className="text">{disk.name(id)}</span>
@@ -54,12 +56,39 @@ function ItemRow(p: PaneProps & { id: number; top: number; grid: string; childre
 
 // Largest files, and search results ------------------------------------------
 
-const LIST_GRID = "minmax(0, 1fr) 78px 86px 34px";
+const LIST_GRID = "30px minmax(0, 1fr) 78px 86px 34px";
 
 export const ListPane = memo(function ListPane(
   p: PaneProps & { ids: number[]; note: ReactNode; empty?: string; onTrash?: (ids: number[]) => void },
 ) {
   const { fmt, t, disk } = p;
+  // Ticking rows for a bulk delete, the same shape the tree uses: nothing is
+  // ticked to begin with, the selection survives a re-sort, and a row that leaves
+  // the disk leaves the selection with it. These two lists are where someone goes
+  // hunting for space, so one bin per row was never enough.
+  const [picked, setPicked] = useState<Set<number>>(() => new Set());
+  useEffect(
+    () =>
+      setPicked((c) => {
+        const next = new Set([...c].filter((id) => !disk.isGone(id)));
+        return next.size === c.size ? c : next;
+      }),
+    [disk, p.version],
+  );
+  const deletable = useMemo(() => p.ids.filter((id) => id > 0), [p.ids]);
+  const pickedBytes = [...picked].reduce((sum, id) => sum + disk.size(id), 0);
+  const allPicked = deletable.length > 0 && deletable.every((id) => picked.has(id));
+  const togglePick = (id: number): void =>
+    setPicked((c) => {
+      const next = new Set(c);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  const trashPicked = (): void => {
+    if (picked.size > 0) p.onTrash?.([...picked]);
+  };
+
   return (
     <div className="pane">
       <div className="pane-note">{p.note}</div>
@@ -67,7 +96,20 @@ export const ListPane = memo(function ListPane(
         <div className="pane-empty">{p.empty}</div>
       ) : (
         <>
+          <div className="pane-bar">
+            <button className="btn quiet" onClick={() => setPicked(new Set(deletable))} disabled={deletable.length === 0 || allPicked}>
+              {t("cleanup.selectAll")}
+            </button>
+            <span className="dim" style={{ marginLeft: "auto", marginRight: 8 }}>
+              {t("cleanup.selected", { count: fmt.count(picked.size), bytes: fmt.bytes(pickedBytes) })}
+            </span>
+            <button className="btn" disabled={picked.size === 0 || !p.onTrash} onClick={trashPicked}>
+              <Icon name="trash" />
+              {t("act.trash")}
+            </button>
+          </div>
           <div className="thead" style={{ gridTemplateColumns: LIST_GRID }}>
+            <button disabled style={{ cursor: "default" }} aria-hidden="true" />
             <button disabled>{t("col.name")}</button>
             <button disabled className="num sorted">
               {t("col.size")}
@@ -85,32 +127,60 @@ export const ListPane = memo(function ListPane(
             onKeyDown={(e) => {
               // The grid owns the key while it holds focus, so Delete is handled
               // here rather than left to the window (whose handler stands aside
-              // for anything inside .rows).
-              if (e.key === "Delete" && p.selected > 0 && !disk.isGone(p.selected)) {
+              // for anything inside .rows). Ticked rows win over the single
+              // selection, which is what ticking them is for.
+              if (e.key !== "Delete") return;
+              if (picked.size > 0) {
+                p.onTrash?.([...picked]);
+                e.preventDefault();
+              } else if (p.selected > 0 && !disk.isGone(p.selected)) {
                 p.onTrash?.([p.selected]);
                 e.preventDefault();
               }
             }}
-            render={(i, top) => (
-              <ItemRow key={p.ids[i]} {...p} id={p.ids[i]} top={top} grid={LIST_GRID}>
-                <div className="num">{fmt.bytes(disk.size(p.ids[i]))}</div>
-                <div className="num dim">{fmt.date(disk.t.mtime[p.ids[i]])}</div>
-                <div style={{ padding: 0 }}>
-                  {p.onTrash && (
-                    <button
-                      className="btn quiet icon"
-                      style={{ height: 24, color: "inherit" }}
-                      title={t("act.trash")}
-                      aria-label={t("act.trash")}
-                      onMouseDown={(e) => e.stopPropagation()}
-                      onClick={() => p.onTrash?.([p.ids[i]])}
-                    >
-                      <Icon name="trash" />
-                    </button>
-                  )}
-                </div>
-              </ItemRow>
-            )}
+            render={(i, top) => {
+              const id = p.ids[i];
+              return (
+                <ItemRow
+                  key={id}
+                  {...p}
+                  id={id}
+                  top={top}
+                  grid={LIST_GRID}
+                  lead={
+                    <div className="pick">
+                      {id > 0 && (
+                        <input
+                          type="checkbox"
+                          checked={picked.has(id)}
+                          aria-label={disk.name(id)}
+                          onMouseDown={(e) => e.stopPropagation()}
+                          onDoubleClick={(e) => e.stopPropagation()}
+                          onChange={() => togglePick(id)}
+                        />
+                      )}
+                    </div>
+                  }
+                >
+                  <div className="num">{fmt.bytes(disk.size(id))}</div>
+                  <div className="num dim">{fmt.date(disk.t.mtime[id])}</div>
+                  <div style={{ padding: 0 }}>
+                    {p.onTrash && (
+                      <button
+                        className="btn quiet icon"
+                        style={{ height: 24, color: "inherit" }}
+                        title={t("act.trash")}
+                        aria-label={t("act.trash")}
+                        onMouseDown={(e) => e.stopPropagation()}
+                        onClick={() => p.onTrash?.([id])}
+                      >
+                        <Icon name="trash" />
+                      </button>
+                    )}
+                  </div>
+                </ItemRow>
+              );
+            }}
           />
         </>
       )}
