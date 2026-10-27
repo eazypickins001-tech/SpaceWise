@@ -535,6 +535,9 @@ export function App() {
       const path = disk.path(id);
       const dir = disk.isDir(id);
       const done = phase.is === "ready";
+      // Everything that moves or removes a file is refused while the scan is
+      // still running, and each one says so rather than going grey in silence.
+      const waiting = t("act.whyScanning");
       const items: MenuEntry[] = can.reveal
         ? [
             { label: t("act.open"), icon: "open", run: () => void window.api.openPath(path) },
@@ -545,13 +548,21 @@ export function App() {
       if (items.length > 0) items.push({ kind: "sep" });
       if (can.fileClipboard)
         items.push(
-        { label: t("act.copy"), icon: "copy", keys: MOD + "+C", disabled: !done, run: () => copyItem(id, false) },
-        { label: t("act.cut"), icon: "cut", keys: MOD + "+X", disabled: !done || id === 0, run: () => copyItem(id, true) },
+        { label: t("act.copy"), icon: "copy", keys: MOD + "+C", disabled: !done, why: done ? undefined : waiting, run: () => copyItem(id, false) },
+        {
+          label: t("act.cut"),
+          icon: "cut",
+          keys: MOD + "+X",
+          disabled: !done || id === 0,
+          why: !done ? waiting : id === 0 ? t("act.whyRoot") : undefined,
+          run: () => copyItem(id, true),
+        },
         {
           label: t(dir ? "act.pasteHere" : "act.paste"),
           icon: "paste",
           keys: MOD + "+V",
           disabled: !done,
+          why: done ? undefined : waiting,
           run: () => void pasteInto(dir ? id : disk.parent(id)),
         },
         );
@@ -560,7 +571,8 @@ export function App() {
         { kind: "sep" },
         { label: t("act.properties"), icon: "info", keys: "Alt+Enter", run: () => showProps(id) },
       );
-      if (can.trash && id > 0) items.push({ kind: "sep" }, { label: t("act.trash"), icon: "trash", keys: "Del", danger: true, disabled: !done, run: () => setTrash([id]) });
+      if (can.trash && id > 0)
+        items.push({ kind: "sep" }, { label: t("act.trash"), icon: "trash", keys: "Del", danger: true, disabled: !done, why: done ? undefined : waiting, run: () => setTrash([id]) });
       setMenu({ x, y, items });
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -753,6 +765,11 @@ export function App() {
   const live = phase.is === "scanning" && disk !== null;
   // Anything that moves around the plan works during a scan as well.
   const nav = ready || live;
+  // Why Live sync is unavailable, or undefined when it can be switched on. The
+  // toolbar button and the View menu entry both read this one value, so the
+  // control cannot be greyed out in one place and silently inert in the other,
+  // and neither can be greyed out without saying why.
+  const liveWhy = !disk ? t("live.whyNoScan") : disk.t.incomplete ? t("live.whyIncomplete") : undefined;
   const menus: Record<BarName, () => MenuEntry[]> = {
     file: () => [
       { label: t("menu.chooseFolder"), icon: "folder", keys: MOD + "+O", run: pickFolder },
@@ -766,7 +783,18 @@ export function App() {
       { label: t("menu.zoomRoot"), disabled: !nav || zoom === 0, run: () => zoomTo(0) },
       { label: t("menu.back"), icon: "back", keys: "Alt+Left", disabled: !nav || trail.back.length === 0, run: () => step("back") },
       { label: t("menu.forward"), icon: "forward", keys: "Alt+Right", disabled: !nav || trail.forward.length === 0, run: () => step("forward") },
-      ...(can.watch ? [{ kind: "sep" } as MenuEntry, { label: t("live.title"), checked: sync && !syncLost, run: toggleSync }] : []),
+      ...(can.watch
+        ? [
+            { kind: "sep" } as MenuEntry,
+            {
+              label: t("live.title"),
+              checked: sync && !syncLost,
+              disabled: liveWhy !== undefined,
+              why: liveWhy,
+              run: toggleSync,
+            } as MenuEntry,
+          ]
+        : []),
       { kind: "sep" },
       { kind: "title", label: t("menu.levels") },
       ...LEVELS.map(
@@ -1471,8 +1499,9 @@ export function App() {
               <button
                 className={"btn" + (synced ? " on" : "")}
                 aria-pressed={synced}
-                disabled={disk.t.incomplete}
-                title={t("live.title")}
+                disabled={liveWhy !== undefined}
+                title={liveWhy ?? t("live.title")}
+                aria-description={liveWhy}
                 onClick={toggleSync}
               >
                 <span className="pulse" />

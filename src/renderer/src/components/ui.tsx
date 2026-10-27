@@ -64,8 +64,22 @@ export function VirtualRows(props: {
   );
 }
 
+// `why` is the sentence a greyed row shows on hover and to a screen reader.
+// A control that is unavailable and does not say why is the defect this exists
+// to prevent, so it is part of the row rather than something the caller adds
+// beside it and forgets.
 export type MenuEntry =
-  | { kind?: "item"; label: string; icon?: IconName; keys?: string; checked?: boolean; danger?: boolean; disabled?: boolean; run: () => void }
+  | {
+      kind?: "item";
+      label: string;
+      icon?: IconName;
+      keys?: string;
+      checked?: boolean;
+      danger?: boolean;
+      disabled?: boolean;
+      why?: string;
+      run: () => void;
+    }
   | { kind: "sep" }
   | { kind: "title"; label: string };
 
@@ -179,6 +193,10 @@ export function Menu(props: {
             tabIndex={-1}
             className={"menu-item" + (it.danger ? " danger" : "") + (i === active ? " active" : "")}
             disabled={it.disabled}
+            // Only when it is actually refused: a reason on an available row
+            // would be a lie about what the row will do.
+            title={it.disabled ? it.why : undefined}
+            aria-description={it.disabled ? it.why : undefined}
             onMouseEnter={() => setActive(it.disabled ? -1 : i)}
             onMouseDown={(e) => e.preventDefault()}
             onClick={() => {
