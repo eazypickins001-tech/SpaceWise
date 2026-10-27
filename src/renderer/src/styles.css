@@ -200,7 +200,7 @@ p {
   padding: 0 14px 0 10px;
 }
 
-/* The wordmark: DISK small and spaced above, PLOT large in the theme's ink. */
+/* The wordmark: SPACE small and spaced above, WISE large in the theme's ink. */
 .wordmark {
   display: grid;
   font: 600 var(--wm, 17px) / 0.82 "Barlow Semi Condensed", var(--font);

@@ -76,12 +76,12 @@ export function Icon({ name, size = 16, className }: { name: IconName; size?: nu
   );
 }
 
-// The wordmark: DISK small and spaced above, PLOT large below.
+// The wordmark: SPACE small and spaced above, WISE large below.
 export function Wordmark({ size = 18 }: { size?: number }) {
   return (
     <span className="wordmark" style={{ ["--wm" as string]: size + "px" }} role="img" aria-label="SpaceWise">
-      <span aria-hidden="true">disk</span>
-      <span aria-hidden="true">plot</span>
+      <span aria-hidden="true">space</span>
+      <span aria-hidden="true">wise</span>
     </span>
   );
 }
