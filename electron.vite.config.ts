@@ -15,7 +15,14 @@ function buildStamp(): string {
   const git = (args: string[]): string => execFileSync("git", args, { encoding: "utf8" }).trim();
   try {
     const commit = git(["rev-parse", "--short", "HEAD"]);
-    const dirty = git(["status", "--porcelain"]) !== "";
+    // electron-vite writes a temporary copy of this very config while it builds,
+    // so an unfiltered `git status` reports the tree dirty on every single build
+    // and the marker would mean nothing. Its own scratch file is not a change
+    // anybody made; everything else still counts.
+    const SCRATCH = /electron\.vite\.config\.\d+\.mjs$/;
+    const dirty = git(["status", "--porcelain"])
+      .split("\n")
+      .some((line) => line.trim() !== "" && !SCRATCH.test(line.trim()));
     const at = new Date().toISOString().slice(0, 16).replace("T", " ");
     return `${commit}${dirty ? "+dirty" : ""} · ${at}`;
   } catch {
