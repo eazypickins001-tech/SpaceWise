@@ -66,10 +66,8 @@ untested even upstream.
 The `ClutterPane` this replaced was deleted rather than left beside the new tab, along with
 the `findClutter` detector it used, so there is exactly one cleanup surface.
 
-What this phase still does not have: no keyboard-driven selection, no way to exclude a folder
-from *future* scans (only from the current cleanup), and no per-item reason shown for the
-refusals inside the history view (the reasons are in the stored record, only the counts are
-drawn).
+What this phase still does not have: no keyboard-driven selection, and no way to exclude a folder
+from *future* scans (only from the current cleanup).
 
 ---
 
@@ -110,7 +108,7 @@ than a bug.
 | --- | --- |
 | Windows build succeeds | **Verified** — `npm run build` exits 0 |
 | Packaging succeeds | `dist:dir` verified; the NSIS installer target is configured but not yet run end to end |
-| Critical tests pass | **Verified** — 138/138 with 0 failures at the last run. Re-run it rather than trusting the number here; this line is a moving target |
+| Critical tests pass | **Verified** — 307/307 with 0 failures at the last run. Re-run it rather than trusting the number here; this line is a moving target |
 | Known limitations documented | **Done** — in the README, `docs/TESTING.md` and `docs/SECURITY.md` |
 | Licence notices preserved | **Done** — `THIRD-PARTY-NOTICES.md` including the SIL OFL font notice |
 | Code signing | **Blocked** — needs a certificate |

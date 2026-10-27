@@ -176,4 +176,5 @@ See `docs/LICENSING.md`.
   The scope rule is hygiene rather than a boundary, because `scan:start` trusts the root it is
   given; the protected-location rule inside it is the part that holds. See `docs/SECURITY.md`.
 - The cleanup audit log is written on every run and is readable from the History button in the
-  Clean up tab, but the view draws only per-run counts. The refusals it stores are not shown.
+  Clean up tab. Each entry draws its counts and, when anything was refused, a disclosure naming
+  every refused path with the reason the record kept for it.

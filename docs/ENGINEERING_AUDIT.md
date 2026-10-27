@@ -416,7 +416,7 @@ plus original code, which is the smaller maintainable set.
 | Snapshot store and reader | `src/main/snapshots.ts` |
 | Squarified treemap layout and canvas renderer | `src/renderer/src/lib/treemap.ts`, `components/Treemap.tsx` |
 | Tree view, panels, icon set, design tokens | `src/renderer/src/components/*`, `styles.css` |
-| Snapshot comparison, top-files, by-type, clutter detection | `src/renderer/src/lib/analysis.ts` |
+| Snapshot comparison, top-files, by-type, clutter detection | `src/renderer/src/lib/analysis.ts` — clutter detection was removed after this audit, with `ClutterPane`; see `ROADMAP.md` |
 | Scan-history reduction format | `src/shared/reduce.ts` |
 | Design system (paper/grid themes, 16px icon grid) | `styles.css`, `components/Icon.tsx` |
 
