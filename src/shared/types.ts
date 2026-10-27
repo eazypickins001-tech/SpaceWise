@@ -50,6 +50,10 @@ export interface DriveInfo {
   label?: string; // shown instead of the path when the system names the volume
   total: number;
   free: number;
+  // Set when the drive is there but could not be read, so it is listed with the
+  // reason rather than dropped from the list without a word. total and free are
+  // zero in that case, and there is nothing to scan.
+  unavailable?: string;
 }
 
 // What the platform underneath can do. The interface hides what it cannot.

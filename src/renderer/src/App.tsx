@@ -2128,6 +2128,21 @@ function StartSheet(p: {
             </div>
           )}
           {p.drives?.map((d) => {
+            // A drive that is there but could not be read is listed with the
+            // reason. It used to be filtered out, so a drive the person could see
+            // in Explorer was simply absent here and nothing explained why.
+            if (d.unavailable)
+              return (
+                <div className="drive" key={d.path}>
+                  <span className="letter">
+                    <Icon name="drive" size={20} />
+                    {d.label ?? d.path.replace(/[\\/]$/, "")}
+                  </span>
+                  <span className="dim" style={{ gridColumn: "2 / -1" }} title={d.unavailable}>
+                    {d.unavailable}
+                  </span>
+                </div>
+              );
             const used = d.total - d.free;
             const frac = d.total > 0 ? used / d.total : 0;
             return (
@@ -2159,6 +2174,11 @@ function StartSheet(p: {
             );
           })}
         </div>
+        {p.drives?.some((d) => d.unavailable) && (
+          <p className="lead" style={{ marginTop: 12, fontSize: 13 }}>
+            {t("start.someUnreadable")}
+          </p>
+        )}
         <div className="sheet-foot">
           <button className="btn" onClick={p.onPick}>
             <Icon name="folder" />

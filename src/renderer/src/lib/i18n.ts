@@ -122,6 +122,7 @@ const en = {
   "start.folder": "Scan a folder...",
   "start.drop": "You can also drop a folder anywhere on this window.",
   "start.noDrives": "No drives were found. Scan a folder instead.",
+  "start.someUnreadable": "Some drives could not be read. Each one above says why, rather than being left out of the list.",
   "start.last": "Last scanned {when}",
 
   "scan.title": "Scanning {root}",
@@ -588,6 +589,7 @@ const pt: Record<Key, string> = {
   "start.folder": "Escanear uma pasta...",
   "start.drop": "Também dá para soltar uma pasta em qualquer lugar desta janela.",
   "start.noDrives": "Nenhuma unidade encontrada. Escaneie uma pasta.",
+  "start.someUnreadable": "Algumas unidades não puderam ser lidas. Cada uma acima diz o motivo, em vez de ser omitida da lista.",
   "start.last": "Último scan {when}",
 
   "scan.title": "Escaneando {root}",

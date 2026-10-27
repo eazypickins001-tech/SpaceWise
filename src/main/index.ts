@@ -1,6 +1,6 @@
 import { app, BrowserWindow, clipboard, dialog, ipcMain, nativeTheme, screen, shell } from "electron";
 import type { IpcMainInvokeEvent } from "electron";
-import { copyFile, lstat, mkdir, readdir, readlink, rename, rm, stat, statfs, symlink } from "fs/promises";
+import { copyFile, lstat, mkdir, readdir, readlink, rename, rm, stat, symlink } from "fs/promises";
 import { createReadStream, createWriteStream } from "fs";
 import { pipeline } from "stream/promises";
 import { existsSync, lstatSync, watch as watchFs } from "fs";
@@ -24,10 +24,10 @@ import type { Action, AuditRecord, Candidate, CleanupItem, CleanupPlan, CleanupR
 import { refuseReason } from "./scope";
 import type { Reach } from "./scope";
 import { openableUrl } from "./external";
+import { listDrives } from "./drives";
 import { fsProbe } from "./probe";
 import type { DirResult } from "./dirworker";
 import type {
-  DriveInfo,
   DupCandidate,
   FileClip,
   ItemStat,
@@ -240,29 +240,8 @@ ipcMain.handle("snap:save", (_e, reduced: Reduced) => {
 
 // Drives ------------------------------------------------------------------
 
-async function listDrives(): Promise<DriveInfo[]> {
-  if (process.platform !== "win32") {
-    const s = await statfs("/");
-    return [{ path: "/", total: s.blocks * s.bsize, free: s.bavail * s.bsize }];
-  }
-  const letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("");
-  const probe = async (letter: string): Promise<DriveInfo | null> => {
-    const path = letter + ":\\";
-    try {
-      // A disconnected network drive can hang; give up on it quickly.
-      const s = await Promise.race([
-        statfs(path),
-        new Promise<never>((_, reject) => setTimeout(() => reject(new Error("timeout")), 1500)),
-      ]);
-      const total = s.blocks * s.bsize;
-      return total > 0 ? { path, total, free: s.bavail * s.bsize } : null;
-    } catch {
-      return null;
-    }
-  };
-  return (await Promise.all(letters.map(probe))).filter((d): d is DriveInfo => d !== null);
-}
-
+// The probing rule, and the reason each unreadable drive is listed rather than
+// dropped, live in drives.ts where a test can hold them to a fake filesystem.
 ipcMain.handle("drives:list", () => listDrives());
 
 ipcMain.handle("dialog:pickFolder", async (e) => {
