@@ -392,9 +392,13 @@ export interface SettingsProps<F, M, L> {
   onLang: (v: L) => void;
   onRescan?: () => void;
   onDrives?: () => void;
-  onSite: () => void;
+  // Drawn only when a website is configured, the rule the desktop Help menu
+  // follows: an entry that opens nothing is worse than no entry.
+  onSite?: () => void;
   onSource: () => void;
-  onAuthor: () => void;
+  onSupport: () => void;
+  // Shown as the contact address, and what the support button writes to.
+  contact: string;
   onClose: () => void;
 }
 
@@ -428,13 +432,19 @@ export function SettingsSheet<F extends string, M extends string, L extends stri
       <Chips label={t("menu.levels")} value={p.levels} choices={p.levelChoices} onPick={p.onLevels} />
       <Chips label={t("menu.language")} value={p.lang} choices={p.langs} onPick={p.onLang} />
       <div className="m-list">
-        <button onClick={p.onSite}>
-          <Icon name="reveal" size={20} />
-          {t("menu.website")}
-        </button>
-        <button onClick={p.onSource}>
+        {p.onSite && (
+          <button onClick={act(p.onSite)}>
+            <Icon name="reveal" size={20} />
+            {t("menu.website")}
+          </button>
+        )}
+        <button onClick={act(p.onSource)}>
           <Icon name="reveal" size={20} />
           {t("menu.source")}
+        </button>
+        <button onClick={act(p.onSupport)}>
+          <Icon name="info" size={20} />
+          {t("menu.support")}
         </button>
       </div>
       <p className="m-about">
@@ -442,15 +452,15 @@ export function SettingsSheet<F extends string, M extends string, L extends stri
         <span>
           {t("about.line", { version: p.version })}
           <br />
-          {t("about.by")}{" "}
+          {t("about.contact")}{" "}
           <a
-            href=""
+            href={"mailto:" + p.contact}
             onClick={(e) => {
               e.preventDefault();
-              p.onAuthor();
+              p.onSupport();
             }}
           >
-            sanguanini.dev
+            {p.contact}
           </a>
         </span>
       </p>

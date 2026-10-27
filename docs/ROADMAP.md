@@ -139,8 +139,9 @@ the recheck being available to it.
 3. **Buy a code-signing certificate** and wire signing into the release job. Declined for now,
    deliberately: the consequence is the SmartScreen warning on first run and nothing else is
    blocked. It matters more the moment the update feed is used in anger — see `SECURITY.md`.
-4. Set `SITE` and `AUTHOR_SITE` in `App.tsx` once a website and an author page exist. `REPO` is
-   set, so the Source button works; these two are still empty, so their buttons are inert.
+4. Give `SITE` in `App.tsx` its real value. It is a placeholder for now, and the Help entry is
+   drawn only once it holds an address, so nothing is inert in the meantime. `REPO` and the
+   contact address in `CONTACT` are set, so the Source and contact entries work as they are.
 
 ## Explicitly out of scope
 

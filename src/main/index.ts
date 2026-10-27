@@ -23,6 +23,7 @@ import { buildAuditRecord, buildPlan, changeReason, changedSince, normalizePath,
 import type { Action, AuditRecord, Candidate, CleanupItem, CleanupPlan, CleanupRunResult, ItemOutcome } from "../shared/cleanup";
 import { refuseReason } from "./scope";
 import type { Reach } from "./scope";
+import { openableUrl } from "./external";
 import { fsProbe } from "./probe";
 import type { DirResult } from "./dirworker";
 import type {
@@ -557,8 +558,12 @@ ipcMain.handle("shell:showInFolder", (e, path: string) => {
   shell.showItemInFolder(String(path));
 });
 ipcMain.handle("shell:openPath", (e, path: string) => refused(sessionOf(e), String(path), "scan") ?? shell.openPath(String(path)));
+// The Help menu opens a website and a contact address. Both come through here,
+// so what may be opened is decided in one tested place (external.ts) rather than
+// by a regex inline: https for the web, and a mailto carrying an address.
 ipcMain.handle("shell:openExternal", (_e, url: string) => {
-  if (/^https:\/\//.test(String(url))) void shell.openExternal(String(url));
+  const ok = openableUrl(url);
+  if (ok) void shell.openExternal(ok);
 });
 // Trashing is destructive, so the path must be strictly inside a scan: the
 // folder that was scanned is never itself a target. Refusals are reported per

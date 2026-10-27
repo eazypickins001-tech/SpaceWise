@@ -42,9 +42,16 @@ const HOME: Tab = MOBILE ? "plan" : "tree";
 type Phase = { is: "start" } | { is: "scanning"; root: string } | { is: "failed"; root: string; error: string } | { is: "ready" };
 
 const MB = 1024 * 1024;
-const SITE = "";
+// Where the Help menu, the About box and the phone's settings sheet point.
+//   SITE is a placeholder: replace it with the product's website, or leave it
+//   empty and the Help entry is not drawn at all rather than sitting there doing
+//   nothing. CONTACT is a real address and is always drawn.
+const SITE = "https://example.com";
+const CONTACT = "denorgerald@gmail.com";
 const REPO = "https://github.com/eazypickins001-tech/SpaceWise";
-const AUTHOR_SITE = "";
+// The MIT project SpaceWise grew out of, so the attribution in the About box
+// points at something that exists rather than at nothing.
+const UPSTREAM = "https://github.com/rodrigokiller/diskplot";
 const DUP_IDLE: DupState = { status: "idle", progress: null, groups: [] };
 
 function load<V extends string>(key: string, allowed: readonly V[], fallback: V): V {
@@ -824,8 +831,13 @@ export function App() {
     help: () => [
       { label: t("menu.shortcuts"), keys: "F1", run: () => setDialog("keys") },
       { kind: "sep" },
-      { label: t("menu.website"), icon: "reveal", run: () => void window.api.openExternal(SITE) },
+      // Drawn only once a website is configured: an entry that opens nothing is
+      // worse than no entry at all.
+      ...(SITE
+        ? [{ label: t("menu.website"), icon: "reveal", run: () => void window.api.openExternal(SITE) } as MenuEntry]
+        : []),
       { label: t("menu.source"), icon: "reveal", run: () => void window.api.openExternal(REPO) },
+      { label: t("menu.support"), icon: "info", run: () => void window.api.openExternal("mailto:" + CONTACT) },
       { kind: "sep" },
       ...(can.update
         ? [
@@ -1697,9 +1709,10 @@ export function App() {
           }}
           onRescan={ready && disk ? () => startScan(disk.t.root) : undefined}
           onDrives={phase.is !== "start" ? toStart : undefined}
-          onSite={() => void window.api.openExternal(SITE)}
+          onSite={SITE ? () => void window.api.openExternal(SITE) : undefined}
           onSource={() => void window.api.openExternal(REPO)}
-          onAuthor={() => void window.api.openExternal(AUTHOR_SITE)}
+          onSupport={() => void window.api.openExternal("mailto:" + CONTACT)}
+          contact={CONTACT}
           onClose={() => setSettingsOpen(false)}
         />
       )}
@@ -1863,6 +1876,9 @@ export function App() {
             <h2>{t("keys.title")}</h2>
           </header>
           <div className="body">
+            <p className="dim" style={{ fontSize: 12.5, marginBottom: 10 }}>
+              {t("keys.lead")}
+            </p>
             <table className="keys">
               <tbody>
                 {(
@@ -1882,6 +1898,7 @@ export function App() {
                     [t("keys.copyCutPaste"), MOD + "+C", MOD + "+X", MOD + "+V"],
                     [t("keys.copyPath"), MOD + "+Shift+C"],
                     [t("keys.trash"), "Delete"],
+                    [t("keys.select"), t("keys.selectKey")],
                     [t("keys.properties"), "Alt+Enter"],
                     [t("keys.windowGroup")],
                     [t("keys.newWindow"), MOD + "+N"],
@@ -1933,21 +1950,36 @@ export function App() {
                 </div>
                 <div>{t("about.line", { version: appVersion })}</div>
                 <div>
-                  {t("about.by")}{" "}
+                  {t("about.contact")}{" "}
                   <a
-                    href={AUTHOR_SITE}
+                    href={"mailto:" + CONTACT}
                     onClick={(e) => {
                       e.preventDefault();
-                      void window.api.openExternal(AUTHOR_SITE);
+                      void window.api.openExternal("mailto:" + CONTACT);
                     }}
                   >
-                    sanguanini.dev
+                    {CONTACT}
+                  </a>
+                </div>
+                <div className="dim" style={{ fontSize: 12, marginTop: 6 }}>
+                  {t("about.upstream")}{" "}
+                  <a
+                    href={UPSTREAM}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      void window.api.openExternal(UPSTREAM);
+                    }}
+                  >
+                    Diskplot
                   </a>
                 </div>
               </div>
             </div>
           </div>
           <footer>
+            <button className="btn" onClick={() => void window.api.openExternal("mailto:" + CONTACT)}>
+              {t("menu.support")}
+            </button>
             <button className="btn" onClick={() => void window.api.openExternal(REPO)}>
               GitHub
             </button>
