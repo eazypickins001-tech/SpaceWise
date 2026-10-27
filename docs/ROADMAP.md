@@ -84,7 +84,7 @@ Duplicate detection is not yet tested against planted byte-identical files, and 
 | Criterion | State |
 | --- | --- |
 | Premium boundaries are clear | **Done** — one feature table in `shared/entitlements.ts`, shown in the interface |
-| Licensing is independently testable | **Done** — `license.test.ts`, `license-store.test.ts` and `entitlements.test.ts`, over real Ed25519 signatures |
+| Licensing is independently testable | **Done** — `license.test.ts` and `license-store.test.ts`, over real Ed25519 signatures; what a licence unlocks is asserted in `license.test.ts`, beside the licences that produce it |
 | Expiry does not block access to user files | **Done and asserted** |
 | Free functionality remains useful | **Done and asserted** |
 | External service dependencies and costs documented | **Done** — `docs/LICENSING.md`; there are no external services |
