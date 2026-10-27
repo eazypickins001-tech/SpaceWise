@@ -23,7 +23,7 @@ import type {
   Capabilities,
   PhoneApi,
 } from "../shared/types";
-import type { Action, AuditRecord, Candidate, CleanupPlan, CleanupRunResult } from "../shared/cleanup";
+import type { Action, AuditRecord, Candidate, CleanupPlan, CleanupProgress, CleanupRunResult } from "../shared/cleanup";
 import type { LicenseState } from "../shared/entitlements";
 
 // Main to renderer events return an unsubscribe function, for effect cleanup.
@@ -73,6 +73,8 @@ const api = {
   planCleanup: (scope: string, candidates: Candidate[], action: Action): Promise<CleanupPlan> =>
     ipcRenderer.invoke("clean:plan", scope, candidates, action),
   runCleanup: (plan: CleanupPlan): Promise<CleanupRunResult> => ipcRenderer.invoke("clean:run", plan),
+  cancelCleanup: (): Promise<void> => ipcRenderer.invoke("clean:cancel"),
+  onCleanupProgress: (cb: (progress: CleanupProgress) => void) => on("clean:progress", cb),
   cleanupHistory: (limit?: number): Promise<AuditRecord[]> => ipcRenderer.invoke("clean:history", limit),
 
   licenseStatus: (): Promise<LicenseState> => ipcRenderer.invoke("lic:status"),

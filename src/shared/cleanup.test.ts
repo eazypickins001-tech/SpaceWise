@@ -4,6 +4,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
+  CANCELLED_REASON,
   actionLabel,
   buildAuditRecord,
   buildPlan,
@@ -11,10 +12,11 @@ import {
   isInside,
   normalizePath,
   revalidate,
+  runPlan,
   summarizeOutcomes,
   validatePath,
 } from "./cleanup";
-import type { FsProbe, ItemOutcome } from "./cleanup";
+import type { CleanupItem, CleanupProgress, FsProbe, ItemOutcome } from "./cleanup";
 
 function probeOf(entries: Record<string, { size: number; mtime: number }>): FsProbe {
   const key = (p: string): string => normalizePath(p).toLowerCase();
@@ -258,4 +260,92 @@ test("every refusal says why, and never names a cause it cannot know", () => {
     assert.doesNotMatch(sentence, /^(gone|size|mtime|unreadable)$/, `"${sentence}" is still a code, not a sentence`);
     assert.match(sentence, /^it/, `"${sentence}" should read as a sentence`);
   }
+});
+
+// The run is where progress and a stop are decided. The filesystem is a fake, so
+// the order of the work, the counts reported and what a stopped run leaves behind
+// are pinned without a disk. Before this, the run was a bare loop in the main
+// process: nothing reported how far it had got, and nothing could stop it, so the
+// interface sat on an indefinite "Working..." it could not close.
+
+function item(path: string, bytes: number): CleanupItem {
+  return { id: bytes, path, bytes, risk: "safe", size: bytes, mtime: 1 };
+}
+
+test("a run states its total before it starts and reports each item as it finishes", async () => {
+  const ready = [item("C:\\work\\a", 10), item("C:\\work\\b", 20), item("C:\\work\\c", 30)];
+  const seen: CleanupProgress[] = [];
+  const outcomes = await runPlan(ready, [], async (i) => ({ path: i.path, status: "removed", bytes: i.bytes }), {
+    cancelled: () => false,
+    onProgress: (p) => seen.push({ ...p }),
+  });
+
+  assert.equal(seen[0].done, 0, "the total is stated before anything is touched");
+  assert.equal(seen[0].total, 3);
+  assert.equal(seen[0].path, "", "and names no item, because none has finished yet");
+  assert.deepEqual(
+    seen.slice(1).map((p) => p.path),
+    ["C:\\work\\a", "C:\\work\\b", "C:\\work\\c"],
+    "each finished item is named in turn",
+  );
+  assert.deepEqual(
+    seen.slice(1).map((p) => p.done),
+    [1, 2, 3],
+    "and the count climbs one at a time",
+  );
+  assert.equal(outcomes.length, 3);
+});
+
+test("a run that is stopped finishes the item in hand and reports the rest as skipped", async () => {
+  const ready = [item("C:\\work\\a", 10), item("C:\\work\\b", 20), item("C:\\work\\c", 30)];
+  const removed: string[] = [];
+  let stop = false;
+  const outcomes = await runPlan(
+    ready,
+    [],
+    async (i) => {
+      removed.push(i.path);
+      stop = true; // the person asks to stop while this removal is under way
+      return { path: i.path, status: "removed", bytes: i.bytes };
+    },
+    { cancelled: () => stop, onProgress: () => {} },
+  );
+
+  assert.deepEqual(removed, ["C:\\work\\a"], "the removal already under way is never interrupted");
+  assert.deepEqual(
+    outcomes.map((o) => o.status),
+    ["removed", "skipped", "skipped"],
+  );
+  assert.equal(outcomes[1].error, CANCELLED_REASON, "an item that was never reached says why");
+  assert.equal(outcomes[2].error, CANCELLED_REASON);
+  const summary = summarizeOutcomes(outcomes);
+  assert.equal(summary.removed, 1, "only what actually went is counted as removed");
+  assert.equal(summary.partial, true, "a stopped run is never presented as one that removed everything");
+});
+
+test("a run that is stopped before the first item touches nothing and reports the lot as skipped", async () => {
+  const ready = [item("C:\\work\\a", 10), item("C:\\work\\b", 20)];
+  let touched = 0;
+  const outcomes = await runPlan(ready, [], async (i) => {
+    touched++;
+    return { path: i.path, status: "removed", bytes: i.bytes };
+  }, { cancelled: () => true, onProgress: () => {} });
+
+  assert.equal(touched, 0, "nothing is removed once a stop has been asked for");
+  assert.ok(outcomes.every((o) => o.status === "skipped"));
+  assert.equal(summarizeOutcomes(outcomes).removed, 0);
+});
+
+test("what the recheck refused is reported as skipped, with its own reason", async () => {
+  const outcomes = await runPlan(
+    [item("C:\\work\\a", 10)],
+    [{ path: "C:\\work\\gone", reason: "the item was removed after the plan was made" }],
+    async (i) => ({ path: i.path, status: "removed", bytes: i.bytes }),
+    { cancelled: () => false, onProgress: () => {} },
+  );
+
+  assert.equal(outcomes.length, 2);
+  assert.equal(outcomes[0].status, "removed");
+  assert.equal(outcomes[1].status, "skipped");
+  assert.match(outcomes[1].error ?? "", /removed after/);
 });

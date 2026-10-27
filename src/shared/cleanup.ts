@@ -308,6 +308,67 @@ export function summarizeOutcomes(outcomes: readonly ItemOutcome[]): OutcomeSumm
   return { removed, failed, skipped, bytesFreed, partial: failed > 0 || skipped > 0 };
 }
 
+// How far a run has got. Sent once to state the total, before anything is
+// touched, and again as each item finishes, so the interface can draw a
+// determinate bar in place of an indefinite "Working..." that says nothing and
+// cannot be stopped.
+export interface CleanupProgress {
+  done: number;
+  total: number;
+  // The item just finished. Empty before the first, which is what lets the
+  // total be shown the moment the run begins rather than only after it ends.
+  path: string;
+}
+
+export interface RunControl {
+  // True once the person has asked to stop. Checked before each item and never
+  // during one, so a removal already under way is never interrupted half-done.
+  cancelled(): boolean;
+  onProgress(progress: CleanupProgress): void;
+}
+
+// Why a stopped run never reached an item. It is a refusal, so a run that was
+// cut short is counted as partial rather than presented as one that removed
+// everything.
+export const CANCELLED_REASON = "the cleanup was stopped before this was removed";
+
+// Rule 5, the run itself. The only thing that touches the disk is the `remove`
+// callback main supplies, so the order of the work, the progress reported and
+// what a stopped run leaves behind are all decided here where a test can hold
+// them to account.
+export async function runPlan(
+  ready: readonly CleanupItem[],
+  invalidated: readonly RejectedItem[],
+  remove: (item: CleanupItem) => Promise<ItemOutcome>,
+  control: RunControl,
+): Promise<ItemOutcome[]> {
+  const outcomes: ItemOutcome[] = [];
+  const total = ready.length + invalidated.length;
+  const report = (path: string): void => control.onProgress({ done: outcomes.length, total, path });
+  report("");
+
+  for (let i = 0; i < ready.length; i++) {
+    if (control.cancelled()) {
+      // Everything left is reported as skipped, each with a reason, so the
+      // result can never read as if the whole lot had gone.
+      for (let j = i; j < ready.length; j++) {
+        outcomes.push({ path: ready[j].path, status: "skipped", bytes: 0, error: CANCELLED_REASON });
+      }
+      break;
+    }
+    const outcome = await remove(ready[i]);
+    outcomes.push(outcome);
+    report(ready[i].path);
+  }
+
+  // Whatever the recheck refused is reported after, with its own reason.
+  for (const bad of invalidated) {
+    outcomes.push({ path: bad.path, status: "skipped", bytes: 0, error: bad.reason });
+    report(bad.path);
+  }
+  return outcomes;
+}
+
 // Rule 10. What gets written to the local audit log. It contains the user's own
 // paths, so it stays on the machine and is never sent anywhere.
 export interface AuditRecord {

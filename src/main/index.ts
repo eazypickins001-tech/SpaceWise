@@ -19,8 +19,8 @@ import { hasFeature } from "../shared/entitlements";
 import type { LicenseState } from "../shared/entitlements";
 import { aiStatus, readAiSettings, requestAdvice, requestSummary, settingsPathIn, writeAiSettings } from "./ai";
 import type { AiSettings } from "./ai";
-import { buildAuditRecord, buildPlan, changeReason, changedSince, normalizePath, revalidate } from "../shared/cleanup";
-import type { Action, AuditRecord, Candidate, CleanupPlan, ItemOutcome } from "../shared/cleanup";
+import { buildAuditRecord, buildPlan, changeReason, changedSince, normalizePath, revalidate, runPlan } from "../shared/cleanup";
+import type { Action, AuditRecord, Candidate, CleanupItem, CleanupPlan, CleanupRunResult, ItemOutcome } from "../shared/cleanup";
 import { refuseReason } from "./scope";
 import type { Reach } from "./scope";
 import { fsProbe } from "./probe";
@@ -53,6 +53,10 @@ interface Session {
   scan: Worker | null;
   dup: Worker | null;
   watch: Watch | null;
+  // Set while a cleanup run is going and the person has asked it to stop. It is
+  // checked between items, so the run stops at a boundary rather than part way
+  // through a removal.
+  cleanStop: boolean;
 }
 
 // Live sync: the system reports which folders changed and only those are
@@ -105,7 +109,7 @@ function createWindow(root?: string): void {
     },
   });
   const id = win.webContents.id;
-  const session: Session = { win, scan: null, dup: null, watch: null, roots: new Set() };
+  const session: Session = { win, scan: null, dup: null, watch: null, roots: new Set(), cleanStop: false };
   sessions.set(id, session);
 
   win.once("ready-to-show", () => win.show());
@@ -435,25 +439,36 @@ ipcMain.handle("clean:plan", (e, scopeArg: string, candidates: Candidate[], acti
   return buildPlan(scope, candidates ?? [], wanted, fsProbe);
 });
 
-ipcMain.handle("clean:run", async (e, plan: CleanupPlan) => {
+// The one filesystem call a run makes, injected into the pure loop so the loop
+// can be tested without a disk and so the action is chosen in exactly one place.
+const removeOnce = (action: Action) => {
+  return async (item: CleanupItem): Promise<ItemOutcome> => {
+    try {
+      if (action === "trash") await shell.trashItem(item.path);
+      else await rm(item.path, { recursive: true, force: true });
+      return { path: item.path, status: "removed", bytes: item.bytes };
+    } catch (err) {
+      return { path: item.path, status: "failed", bytes: 0, error: String((err as Error)?.message ?? err) };
+    }
+  };
+};
+
+ipcMain.handle("clean:run", async (e, plan: CleanupPlan): Promise<CleanupRunResult> => {
   const s = sessionOf(e);
   if (!s || !plan || !inScope(s, plan.scope)) {
     return { outcomes: [] as ItemOutcome[], invalidated: [], record: null, error: "ESCOPE" };
   }
   // Rule 4: every path is rechecked now, not when the plan was drawn.
   const { ready, invalidated } = revalidate(plan, fsProbe);
-  const outcomes: ItemOutcome[] = [];
-  for (const item of ready) {
-    try {
-      if (plan.action === "trash") await shell.trashItem(item.path);
-      else await rm(item.path, { recursive: true, force: true });
-      outcomes.push({ path: item.path, status: "removed", bytes: item.bytes });
-    } catch (err) {
-      outcomes.push({ path: item.path, status: "failed", bytes: 0, error: String((err as Error)?.message ?? err) });
-    }
-  }
-  // Whatever was invalidated is reported as skipped, with the reason kept.
-  for (const bad of invalidated) outcomes.push({ path: bad.path, status: "skipped", bytes: 0, error: bad.reason });
+  // Cleared here, not after, so a stop asked for while the plan was still being
+  // drawn is not lost. It applies to this run only.
+  s.cleanStop = false;
+  const outcomes = await runPlan(ready, invalidated, removeOnce(plan.action), {
+    cancelled: () => s.cleanStop,
+    // Sent as each item finishes, so the interface can draw a determinate bar
+    // and name what it is doing instead of an indefinite "Working...".
+    onProgress: (progress) => send(s, "clean:progress", progress),
+  });
   const record = buildAuditRecord(plan, outcomes, invalidated, Date.now());
   try {
     appendAudit(auditFile(), record);
@@ -461,6 +476,13 @@ ipcMain.handle("clean:run", async (e, plan: CleanupPlan) => {
     // A history that cannot be written must not fail the action itself.
   }
   return { outcomes, invalidated, record, error: null };
+});
+
+// Stop the run in this window. The flag is read between items, so the removal
+// already under way finishes and the rest are reported as skipped.
+ipcMain.handle("clean:cancel", (e) => {
+  const s = sessionOf(e);
+  if (s) s.cleanStop = true;
 });
 
 ipcMain.handle("clean:history", (_e, limit?: number): AuditRecord[] => readAudit(auditFile(), Number(limit) || 20));

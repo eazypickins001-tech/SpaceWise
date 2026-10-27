@@ -10,7 +10,7 @@ import type { ReactNode } from "react";
 import type { CategoryId, Finding, Risk } from "../../../shared/storage-intelligence";
 import { CATEGORIES, analyzeStorage, summarize } from "../../../shared/storage-intelligence";
 import { actionLabel } from "../../../shared/cleanup";
-import type { AuditRecord, CleanupPlan, CleanupRunResult } from "../../../shared/cleanup";
+import type { AuditRecord, CleanupPlan, CleanupProgress, CleanupRunResult } from "../../../shared/cleanup";
 import type { Fmt, T } from "../lib/i18n";
 import type { PaneProps } from "./Panels";
 import { Icon } from "./Icon";
@@ -55,6 +55,14 @@ export const CleanupPane = memo(function CleanupPane(p: PaneProps & { onRemoved:
   const [history, setHistory] = useState<AuditRecord[] | null>(null);
   // Anything that went wrong, shown rather than swallowed.
   const [problem, setProblem] = useState<string | null>(null);
+  // How far a run has got, and whether a stop has been asked for. Kept apart
+  // from `step` so the bar can move without changing which sheet is drawn.
+  const [progress, setProgress] = useState<CleanupProgress | null>(null);
+  const [stopping, setStopping] = useState(false);
+
+  // The total arrives before the first item is touched, so the count and the bar
+  // are honest from the start rather than only once the run has ended.
+  useEffect(() => window.api.onCleanupProgress(setProgress), []);
   // The optional summary is opened by hand, never on its own.
   const [summaryOpen, setSummaryOpen] = useState(false);
   // Which finding the assistant is being asked about, by id.
@@ -113,6 +121,8 @@ export const CleanupPane = memo(function CleanupPane(p: PaneProps & { onRemoved:
   };
 
   const run = async (built: CleanupPlan): Promise<void> => {
+    setProgress(null);
+    setStopping(false);
     setStep({ is: "running", plan: built });
     let result: CleanupRunResult;
     try {
@@ -136,6 +146,15 @@ export const CleanupPane = memo(function CleanupPane(p: PaneProps & { onRemoved:
     }
     setStep({ is: "result", plan: built, result });
     setHistory(null);
+  };
+
+  // Closing the running sheet and stopping the run are the same act: the sheet
+  // exists only to show the run, so there is nothing else "close" could mean.
+  // The stop is read between items, so a removal already under way finishes and
+  // everything untouched is reported as skipped rather than quietly dropped.
+  const cancelRun = (): void => {
+    setStopping(true);
+    void window.api.cancelCleanup();
   };
 
   if (findings.length === 0) {
@@ -325,13 +344,41 @@ export const CleanupPane = memo(function CleanupPane(p: PaneProps & { onRemoved:
       )}
 
       {step.is === "running" && (
-        <Sheet onClose={() => undefined}>
+        <Sheet onClose={cancelRun}>
           <header>
-            <h2>{t("cleanup.running")}</h2>
+            <h2>{t(stopping ? "scan.stopping" : "cleanup.running")}</h2>
           </header>
           <div className="body">
-            <p>{t("cleanup.planItems", { count: fmt.count(step.plan.items.length), bytes: fmt.bytes(step.plan.estimatedBytes) })}</p>
+            {progress ? (
+              <>
+                <p className="what">{t("cleanup.progress", { done: fmt.count(progress.done), total: fmt.count(progress.total) })}</p>
+                <div className="share" style={{ marginTop: 6 }}>
+                  <span className="track" style={{ height: 10 }}>
+                    <span
+                      className="fill"
+                      style={{ width: (progress.total > 0 ? progress.done / progress.total : 0) * 100 + "%", display: "block" }}
+                    />
+                  </span>
+                </div>
+                {progress.path ? (
+                  <p className="dim" style={{ fontSize: 12, marginTop: 6, overflowWrap: "anywhere" }}>
+                    <bdi>{progress.path}</bdi>
+                  </p>
+                ) : null}
+              </>
+            ) : (
+              <p>{t("cleanup.planItems", { count: fmt.count(step.plan.items.length), bytes: fmt.bytes(step.plan.estimatedBytes) })}</p>
+            )}
+            <p className="dim" style={{ fontSize: 12 }}>
+              {t("cleanup.closeStops")}
+            </p>
           </div>
+          <footer>
+            <button className="btn" onClick={cancelRun} disabled={stopping} autoFocus>
+              <Icon name="stop" />
+              {t(stopping ? "scan.stopping" : "act.cancel")}
+            </button>
+          </footer>
         </Sheet>
       )}
 
