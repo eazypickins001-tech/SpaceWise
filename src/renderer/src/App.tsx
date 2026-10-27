@@ -498,8 +498,10 @@ export function App() {
       markFresh([last]);
     }
     if (failed > 0) {
-      const known = ["EINSIDE", "ESAME", "EEXIST"].includes(why) ? (why as "EINSIDE" | "ESAME" | "EEXIST") : "other";
-      setNotice({ text: t("clip.failed", { count: failed, why: t(`clip.${known}`) }), bad: true });
+      // Three codes have sentences of their own; anything else is shown exactly as
+      // the system returned it, rather than dressed up as "the system refused".
+      const known = ["EINSIDE", "ESAME", "EEXIST"].includes(why) ? (why as "EINSIDE" | "ESAME" | "EEXIST") : null;
+      setNotice({ text: t("clip.failed", { count: failed, why: known ? t(`clip.${known}`) : why || t("clip.other") }), bad: true });
     } else {
       setNotice(null);
       flash(t("clip.pasted", { count: done }));
@@ -726,7 +728,11 @@ export function App() {
     const next = !(sync && !syncLost);
     // Switching it off records where the disk stands now.
     if (!next && synced && disk) {
-      void window.api.saveSnapshot(reduceTable(disk.t, Date.now())).then((meta) => meta && setNotice({ text: t("live.saved") }));
+      // A save that failed returns null; say so rather than implying the state
+      // made it into the history.
+      void window.api
+        .saveSnapshot(reduceTable(disk.t, Date.now()))
+        .then((meta) => setNotice(meta ? { text: t("live.saved") } : { text: t("live.saveFailed"), bad: true }));
     }
     setSyncLost(false);
     setSync(next);

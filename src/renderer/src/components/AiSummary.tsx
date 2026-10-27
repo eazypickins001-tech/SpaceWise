@@ -49,7 +49,12 @@ export function AiSummarySheet({ disk, findings, t, fmt, onClose, onLicence }: P
   // happen is indistinguishable from a save that failed.
   const [saved, setSaved] = useState(false);
 
-  useEffect(() => {
+  // Why the status could not be read. Without it a failed call left the sheet on
+  // "Checking…" for ever, with no error and no way to try again.
+  const [statusError, setStatusError] = useState("");
+
+  const load = useCallback((): void => {
+    setStatusError("");
     void window.api
       .aiStatus()
       .then((next) => {
@@ -57,8 +62,10 @@ export function AiSummarySheet({ disk, findings, t, fmt, onClose, onLicence }: P
         setBaseUrl((was) => was || next.baseUrl);
         setModel((was) => was || next.model);
       })
-      .catch(() => setStatus(null));
+      .catch((err) => setStatusError(String((err as Error)?.message ?? err)));
   }, []);
+
+  useEffect(() => load(), [load]);
 
   const payload = useMemo(() => {
     const table = disk.t;
@@ -129,7 +136,17 @@ export function AiSummarySheet({ disk, findings, t, fmt, onClose, onLicence }: P
           {t("ai.lead")}
         </p>
 
-        {status === null && <p>{t("ai.checking")}</p>}
+        {status === null &&
+          (statusError !== "" ? (
+            <p style={{ color: "var(--red, #b3261e)" }}>
+              {t("ai.statusFailed", { why: statusError })}{" "}
+              <button className="btn quiet" onClick={load}>
+                {t("ai.retry")}
+              </button>
+            </p>
+          ) : (
+            <p>{t("ai.checking")}</p>
+          ))}
 
         {status !== null && (
           <div style={{ marginTop: 8 }}>

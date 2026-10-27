@@ -51,12 +51,19 @@ export function ChatSheet({ disk, finding, category, t, fmt, onClose, onLicence 
   const [problem, setProblem] = useState("");
   const [showSent, setShowSent] = useState(false);
 
-  useEffect(() => {
+  // Why the status could not be read, kept so the sheet can say so rather than
+  // silently behaving as if nothing is set up.
+  const [statusError, setStatusError] = useState("");
+
+  const load = useCallback((): void => {
+    setStatusError("");
     void window.api
       .aiStatus()
       .then(setStatus)
-      .catch(() => setStatus(null));
+      .catch((err) => setStatusError(String((err as Error)?.message ?? err)));
   }, []);
+
+  useEffect(() => load(), [load]);
 
   const label = relativeLabel(disk.t.root, finding.path);
 
@@ -137,6 +144,15 @@ export function ChatSheet({ disk, finding, category, t, fmt, onClose, onLicence 
         {status !== null && !status.configured && (
           <p className="dim" style={{ fontSize: 12, marginTop: 8 }}>
             {t("ai.askNotSetUp")}
+          </p>
+        )}
+
+        {statusError !== "" && (
+          <p style={{ color: "var(--red, #b3261e)", fontSize: 12, marginTop: 8 }}>
+            {t("ai.statusFailed", { why: statusError })}{" "}
+            <button className="btn quiet" onClick={load}>
+              {t("ai.retry")}
+            </button>
           </p>
         )}
 

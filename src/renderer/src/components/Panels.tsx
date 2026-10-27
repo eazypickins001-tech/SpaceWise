@@ -182,6 +182,9 @@ export interface DupState {
   status: "idle" | "running" | "done";
   progress: DupProgress | null;
   groups: DupGroup[];
+  // Why a search failed, when one did. Kept so the pane can say what happened
+  // instead of reporting a broken run as an empty, duplicate-free result.
+  error?: string;
 }
 
 export const DupesPane = memo(function DupesPane(
@@ -199,7 +202,9 @@ export const DupesPane = memo(function DupesPane(
   useEffect(() => {
     const offP = window.api.onDupProgress((progress) => setState({ status: "running", progress, groups: [] }));
     const offD = window.api.onDupDone((groups) => setState({ status: "done", progress: null, groups }));
-    const offE = window.api.onDupError(() => setState({ status: "done", progress: null, groups: [] }));
+    // The reason the search failed used to be thrown away here, which made a crash
+    // and a clean empty result indistinguishable on screen.
+    const offE = window.api.onDupError((error) => setState({ status: "done", progress: null, groups: [], error }));
     return () => {
       offP();
       offD();
@@ -307,9 +312,15 @@ export const DupesPane = memo(function DupesPane(
   return (
     <div className="pane">
       <div className="pane-bar">
-        <strong className="grow" style={{ fontWeight: 600 }}>
-          {sets > 0 ? t("dupes.summary", { groups: fmt.count(sets), bytes: fmt.bytes(wasted) }) : t("dupes.none")}
-        </strong>
+        {state.error ? (
+          <strong className="grow" style={{ fontWeight: 600, color: "var(--red, #b3261e)" }}>
+            {t("dupes.failed", { why: state.error })}
+          </strong>
+        ) : (
+          <strong className="grow" style={{ fontWeight: 600 }}>
+            {sets > 0 ? t("dupes.summary", { groups: fmt.count(sets), bytes: fmt.bytes(wasted) }) : t("dupes.none")}
+          </strong>
+        )}
         {picker}
         <button className="btn" onClick={start}>
           {t("dupes.again")}
