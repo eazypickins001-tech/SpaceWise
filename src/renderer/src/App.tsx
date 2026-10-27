@@ -984,8 +984,16 @@ export function App() {
         pickFolder();
       } else if (mod && key === "f") {
         e.preventDefault();
-        searchRef.current?.focus();
-        searchRef.current?.select();
+        // The search field sits in the toolbar that a running scan hides, so
+        // focusing it there silently did nothing. Search the finished scan, and
+        // when there is not one yet, say so rather than pretending to respond:
+        // the results would be read off a table that is replaced every second.
+        if (ready) {
+          searchRef.current?.focus();
+          searchRef.current?.select();
+        } else {
+          flash(t(disk ? "search.whyScanning" : "search.whyNoScan"));
+        }
       } else if (e.key === "Escape") {
         if (typing && query) clearFilters();
         else if (phase.is === "scanning") (live ? stopHere : toStart)();

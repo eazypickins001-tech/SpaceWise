@@ -360,6 +360,8 @@ const en = {
   "act.select": "Select",
 
   "search.placeholder": "Find by name",
+  "search.whyScanning": "Search works on the finished scan. This one is still running.",
+  "search.whyNoScan": "Scan something first, then search it by name.",
   "filter.size": "Larger than",
   "filter.age": "Untouched for",
   "filter.any": "Any",
@@ -824,6 +826,8 @@ const pt: Record<Key, string> = {
   "act.select": "Selecionar",
 
   "search.placeholder": "Buscar por nome",
+  "search.whyScanning": "A busca funciona no scan concluído. Este ainda está em andamento.",
+  "search.whyNoScan": "Escaneie algo primeiro e depois busque por nome.",
   "filter.size": "Maior que",
   "filter.age": "Sem mexer há",
   "filter.any": "Qualquer",
