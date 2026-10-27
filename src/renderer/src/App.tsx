@@ -43,10 +43,9 @@ type Phase = { is: "start" } | { is: "scanning"; root: string } | { is: "failed"
 
 const MB = 1024 * 1024;
 // Where the Help menu, the About box and the phone's settings sheet point.
-//   SITE is a placeholder: replace it with the product's website, or leave it
-//   empty and the Help entry is not drawn at all rather than sitting there doing
-//   nothing. CONTACT is a real address and is always drawn.
-const SITE = "https://example.com";
+//   Leave SITE empty and its Help entry is not drawn at all rather than sitting
+//   there doing nothing. CONTACT is a real address and is always drawn.
+const SITE = "https://dominixai.com";
 const CONTACT = "denorgerald@gmail.com";
 const REPO = "https://github.com/eazypickins001-tech/SpaceWise";
 // The MIT project SpaceWise grew out of, so the attribution in the About box
