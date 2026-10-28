@@ -28,11 +28,12 @@ real preload and the real Content Security Policy, then fails if
   on a temporary folder with four files and a known layout, and fails if the entry count, the
   file and folder counts, the bytes written or the unreadable count disagree. That is the one
   part of the application no unit test can reach, because it needs worker threads. It asserts the
-  bytes *written*, not the bytes on disk: `AllocationSize` as reported while enumerating a folder
-  lives in the directory entry, and Windows does not hold it still — a direct
-  `GetFileInformationByHandleEx` call against a folder written a moment earlier read 4096 at 1.2 s
-  and 0 at 2.4 s for the same file. Asserting on that failed about one run in three, and a check
-  that fails by itself is worse than no check at all.
+  bytes *written*, not the bytes on disk, because this check writes `Buffer.alloc` — zeros — and
+  this machine's temp volume has NTFS compression on. A file of zeros legitimately reports a few
+  kilobytes, or nothing, once the compressor has run: a direct `GetFileInformationByHandleEx` call
+  against a folder written a moment earlier read 4096 at 1.2 s and 0 at 2.4 s for the same file.
+  Asserting on that failed about one run in three, and a check that fails by itself is worse than no
+  check at all. The logical total does not move.
 - the **sheets draw**, and so do the **views**. It opens the sheets a person can reach — Settings
   from the View menu, "Why is it slow?" from the start screen, About and the shortcut list from Help
   — and reads each one back: that every settings row and the protected folder are there, that the
@@ -81,17 +82,15 @@ themselves a few rows tall — which made these checks read half-drawn panes and
 three, depending on how busy the machine was. A hidden window is enough for the policy checks; it is
 not enough for checks that have to read what was drawn.
 
-The folder the views are driven with is built from sizes this machine reports honestly, and it is
-checked before anything leans on it. Windows does not commit the allocation of a large fresh write
-promptly: measured here, a 12 MiB file enumerates as **0 bytes on disk** for seconds after it is
-written, while a 1 MiB file is honest every time. That is the filesystem's business, not the
-application's, and it is written down because it looked like five separate product faults — a
-duplicate saving of 768 KB, files missing from the largest list, a folder the cleanup rules could
-not see. So the duplicate pair is 1 MiB (and the check sets the pane's own minimum to 1 MB first,
-which a person can do too), and the folder the cleanup rules have to recognise is made of forty
-50 KB files rather than a few large ones. `checkFixture` reads the scan back and fails with that
-explanation if the machine ever disagrees, rather than letting the checks below report something
-that is not true.
+The folder the views are driven with is written with random bytes, and checked before anything
+leans on it. That is not about realism: this machine's temp volume has **NTFS compression** on, and
+`Buffer.alloc(n)` is n zero bytes, which compresses to nothing. A 12 MiB file of zeros legitimately
+reports 768 KB — or 0 — on disk once the compressor has run, and every check that read a size then
+measured the compressor rather than the product: a duplicate saving of 768 KB, files dropping out of
+the largest list, a folder falling under the cleanup rules' 1 MiB floor. Random bytes cannot be
+compressed, so an on-disk size stays a size. `checkFixture` reads the scan back and fails with that
+explanation if a volume ever compresses the fixture anyway. The duplicate pair is 1 MiB and the
+check sets the pane's own minimum to 1 MB first, which a person can do too.
 
 It also asserts what the policy *should* refuse, because a check that cannot fail is not a check:
 

@@ -46,7 +46,7 @@
 //   npm run build && npm run smoke
 const { app, BrowserWindow, ipcMain, shell } = require("electron");
 const { spawnSync } = require("node:child_process");
-const { createHash } = require("node:crypto");
+const { createHash, randomBytes } = require("node:crypto");
 const { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } = require("node:fs");
 const { tmpdir } = require("node:os");
 const { Worker } = require("node:worker_threads");
@@ -112,12 +112,13 @@ async function checkScan() {
     writeFileSync(path.join(dir, "nested", "deeper", "four.bin"), Buffer.alloc(8000));
 
     const table = await scanOnce(dir);
-    // The bytes written, not the bytes on disk. `AllocationSize` as reported while
-    // enumerating a folder comes from the directory entry, and Windows does not hold
-    // it still: measured through a direct GetFileInformationByHandleEx call on a
-    // folder written a moment earlier, the same file read 4096 at 1.2 s and 0 at
-    // 2.4 s. Asserting on that made this check fail about one run in three, which is
-    // worse than not checking at all. The logical total does not move.
+    // The bytes written, not the bytes on disk. The files this check writes are
+    // `Buffer.alloc`, which is zeros, and this machine's temp volume compresses: a file
+    // of zeros legitimately reports a few kilobytes — or nothing — once the compressor
+    // has run. Measured with a direct GetFileInformationByHandleEx call, the same file
+    // read 4096 at 1.2 s and 0 at 2.4 s. Asserting on that made this check fail about one
+    // run in three, which is worse than not checking at all. The logical total does not
+    // move, and it is what this folder was written with.
     const seen = {
       entries: table.n,
       files: table.files[0],
@@ -373,21 +374,21 @@ const VIEW_FIXTURE = {
 // fixture, the assertions and the report cannot drift apart.
 const DOOMED = ["doomed-one.bin", "doomed-two.bin", "doomed-three.bin"];
 
-// The duplicate pair, and a file of exactly the same size with different bytes in it.
+// The duplicate pair, plus a file of exactly the same size with different bytes in it.
 //
-// One MiB, not tens of them, because of what Windows does with a large fresh write:
-// measured on this machine, a 12 MiB file can enumerate as **0 bytes on disk** for
-// seconds after it is written, while a 1 MiB file is reported honestly every time. That
-// is not the application's fault and must not be mistaken for one — it made the saving
-// read 768 KB, pushed files out of the largest list, and hid a folder from the cleanup
-// rules, all of which looked like product faults. The pane's own minimum is 10 MB, so
-// the check sets its picker to 1 MB first, which is a gesture a person makes too.
+// Every file the fixture writes is random, and that is not about realism: this machine's
+// temp volume has NTFS compression on, and `Buffer.alloc(n)` is n zero bytes, which
+// compresses to nothing. Twelve megabytes of zeros legitimately reports 0 bytes on disk
+// once the compressor has run — so a fixture built that way measures the compressor
+// rather than the product, and did: a duplicate saving read 768 KB, files dropped out of
+// the largest list, and a folder fell under the cleanup rules' 1 MiB floor. Random bytes
+// cannot be compressed, so an on-disk size stays a size.
 const TWINS = ["twin-a.bin", "twin-b.bin"];
 const DECOY = "twin-odd.bin";
-const TWIN_BYTES = 1024 * 1024;
+const TWIN_BYTES = 1024 * 1024; // at the pane's smallest minimum, which the check selects first
 
 // A folder the cleanup rules recognise by name alone, and made of enough small files
-// that its total clears their 1 MiB floor however the machine rounds them.
+// that its total clears their 1 MiB floor.
 const CACHE = "node_modules";
 const CACHE_FILES = 40;
 const CACHE_FILE_BYTES = 50_000;
@@ -395,29 +396,30 @@ const CACHE_FILE_BYTES = 50_000;
 async function makeFixture() {
   const dir = mkdtempSync(path.join(tmpdir(), "spacewise-view-"));
   mkdirSync(path.join(dir, "nested"), { recursive: true });
-  writeFileSync(path.join(dir, "big.bin"), Buffer.alloc(VIEW_FIXTURE.big));
-  writeFileSync(path.join(dir, "small.bin"), Buffer.alloc(VIEW_FIXTURE.small));
-  writeFileSync(path.join(dir, "notes.txt"), Buffer.alloc(VIEW_FIXTURE.text));
-  writeFileSync(path.join(dir, "README"), Buffer.alloc(VIEW_FIXTURE.bare));
-  writeFileSync(path.join(dir, "nested", "deep.bin"), Buffer.alloc(VIEW_FIXTURE.deep));
-  DOOMED.forEach((name, i) => writeFileSync(path.join(dir, name), Buffer.alloc((i + 1) * 1_000)));
+  const bytes = (n) => randomBytes(n); // incompressible, for the reason above
+  writeFileSync(path.join(dir, "big.bin"), bytes(VIEW_FIXTURE.big));
+  writeFileSync(path.join(dir, "small.bin"), bytes(VIEW_FIXTURE.small));
+  writeFileSync(path.join(dir, "notes.txt"), bytes(VIEW_FIXTURE.text));
+  writeFileSync(path.join(dir, "README"), bytes(VIEW_FIXTURE.bare));
+  writeFileSync(path.join(dir, "nested", "deep.bin"), bytes(VIEW_FIXTURE.deep));
+  DOOMED.forEach((name, i) => writeFileSync(path.join(dir, name), bytes((i + 1) * 1_000)));
 
-  const twin = Buffer.alloc(TWIN_BYTES, 7);
+  const twin = bytes(TWIN_BYTES);
   TWINS.forEach((name) => writeFileSync(path.join(dir, name), twin));
-  const odd = Buffer.alloc(TWIN_BYTES, 7);
-  odd[odd.length - 1] = 8; // the same length, one different byte
+  const odd = Buffer.from(twin);
+  odd[odd.length - 1] ^= 0xff; // the same length, one different byte
   writeFileSync(path.join(dir, DECOY), odd);
 
   mkdirSync(path.join(dir, CACHE, "pkg"), { recursive: true });
   for (let i = 0; i < CACHE_FILES; i++) {
-    writeFileSync(path.join(dir, CACHE, "pkg", `chunk-${i}.bin`), Buffer.alloc(CACHE_FILE_BYTES, i));
+    writeFileSync(path.join(dir, CACHE, "pkg", `chunk-${i}.bin`), bytes(CACHE_FILE_BYTES));
   }
 
   return { dir, table: await scanOnce(dir) };
 }
 
-// What the scan says each of these is, by name, so the fixture can be asked whether
-// this machine has committed it yet.
+// What the scan says each of these is, by name, so the fixture can be asked whether the
+// volume reported it honestly.
 function sizesOf(table, names) {
   const decoder = new TextDecoder();
   const out = new Map();
@@ -428,9 +430,11 @@ function sizesOf(table, names) {
   return out;
 }
 
-// The fixture has to read back what it wrote before any check leans on it. This exists
-// because it did not, and the failures it caused pointed at five different innocent
-// parts of the application.
+// The fixture has to read back what it wrote before any check leans on it, and the one
+// way it does not is if the volume compresses it: the files here are random, so their
+// on-disk size cannot be meaningfully smaller than their length. If it is, this machine's
+// temp volume is compressing them anyway and the checks below would be measuring that
+// rather than the product.
 function checkFixture(table) {
   const sizes = sizesOf(table, TWINS.concat(DECOY, CACHE));
   for (const name of TWINS.concat(DECOY)) {
@@ -438,8 +442,8 @@ function checkFixture(table) {
     if (!got) problems.push(`the fixture's ${name} is not in the scan at all`);
     else if (got.onDisk < got.logical) {
       problems.push(
-        `the fixture's ${name} holds ${got.logical} bytes but this machine reports ${got.onDisk} of them on disk,` +
-          ` so the filesystem has not committed it yet — anything below that depends on its size would fail for that reason rather than for the product's`,
+        `the fixture's ${name} holds ${got.logical} bytes of random data but this volume reports ${got.onDisk} of them on disk,` +
+          ` so it is compressing them — anything below that reads a size would be measuring the compression rather than the product`,
       );
     }
   }
