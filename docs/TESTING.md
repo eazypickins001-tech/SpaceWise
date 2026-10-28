@@ -25,8 +25,21 @@ real preload and the real Content Security Policy, then fails if
 - anything at all was refused by the policy during load;
 - the **production scan** gives the wrong answer. The smoke test also runs the built scan worker
   on a temporary folder with four files and a known layout, and fails if the entry count, the
-  file and folder counts, the bytes on disk or the unreadable count disagree. That is the one
-  part of the application no unit test can reach, because it needs worker threads.
+  file and folder counts, the bytes written or the unreadable count disagree. That is the one
+  part of the application no unit test can reach, because it needs worker threads. It asserts the
+  bytes *written*, not the bytes on disk: `AllocationSize` as reported while enumerating a folder
+  lives in the directory entry, and Windows does not hold it still — a direct
+  `GetFileInformationByHandleEx` call against a folder written a moment earlier read 4096 at 1.2 s
+  and 0 at 2.4 s for the same file. Asserting on that failed about one run in three, and a check
+  that fails by itself is worse than no check at all.
+- the **sheets draw**. It opens the sheets a person can reach — Settings from the View menu, "Why
+  is it slow?" from the start screen, About and the shortcut list from Help — and reads each one
+  back: that every settings row and the protected folder are there, that the diagnosis puts the
+  measured figures into its sentence, that a reading it could not take is named as such rather
+  than dropped, that the About box shows the build stamp, and that every sheet closes. The main
+  process is not part of the harness, so these screens are answered from a fixed script; the live
+  answer is exercised by `npm run bench` instead. Before this existed, a section that quietly
+  stopped rendering passed every check in this file.
 - the **application does not start**. It also starts the built main process in a child and fails
   if it throws while loading or never opens a window. Nothing else loads `out/main/index.js`, so
   a main process that dies before `app.whenReady()` used to pass the entire suite; a duplicated
@@ -53,7 +66,7 @@ It needs a build first, so the order is `npm run build && npm run smoke`. It is 
 
 ## What is covered
 
-Last verified run on this machine: **307 tests, 307 passed, 0 failed** (~16 s).
+Last verified run on this machine: **339 tests, 339 passed, 0 failed** (~16 s).
 
 | File | What it pins down |
 | --- | --- |
@@ -92,17 +105,17 @@ Highlights worth knowing about:
 
 ## What is *not* covered yet
 
-This list is the honest gap. None of it has been run.
+This list is the honest gap: what no test reaches today. Where something on it has since been
+partly closed, it says so and says what is left.
 
-- **Nothing drives the interface beyond the start screen.** The main process *starting* is now
-  covered (`npm run boot`, and as part of `npm run smoke`), and the smoke test opens the real
-  built renderer with the real preload and the real policy, but it never gets past the opening
-  screen. The Clean up tab, the duplicate list, the history, the licence sheet, the summary sheet
-  and the chat sheet are covered by unit tests over their pure parts and by nothing else. That
-  the main process ever started was the same shape of gap until it shipped a startup failure —
-  every test passed while the application could not open a window at all. **This is still the
-  largest remaining gap:** a component that throws when mounted with real scan data would ship
-  unnoticed, and one of those has already done so once.
+- **Nothing drives a scan into the interface.** The main process *starting* is covered (`npm run
+  boot`, and as part of `npm run smoke`), and the smoke test now opens and reads the sheets, but
+  every screen that needs a finished scan — the Clean up tab, the largest list, the treemap, the
+  duplicate list, the history, the summary and the chat — is still covered by unit tests over its
+  pure parts and by nothing else. That the main process ever started was the same shape of gap
+  until it shipped a startup failure — every test passed while the application could not open a
+  window at all. **This is still the largest remaining gap:** a component that throws when mounted
+  with real scan data would ship unnoticed, and one of those has already done so once.
 - **No test opens a folder through the interface.** Picking a folder, dragging one in and the
   drive list are untested end to end; every test starts a scan by calling the worker directly.
 - **Unreadable directories are covered in the walk and the lister, but not through

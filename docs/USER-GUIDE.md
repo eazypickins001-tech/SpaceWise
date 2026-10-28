@@ -276,9 +276,11 @@ Stated plainly, because finding out later is worse.
 - **Hard-linked files are counted once per name** in scan totals. This is standard for storage
   tools, and it makes folders such as `WinSxS` look larger than the space they uniquely occupy.
   The duplicates figure is not affected.
-- **The interface beyond the opening screen has no automated test.** The underlying logic is
-  heavily tested; that a particular panel *draws* correctly is checked by hand, and a drawing
-  fault would not be caught automatically.
+- **The sheets are checked automatically; the tabbed views are not.** Settings, "Why is it slow?",
+  About and the shortcut list are opened and read back by `npm run smoke`, so a section that
+  stopped drawing would fail the build. Everything that needs a finished scan — the Clean up tab,
+  the largest list, the map, the duplicate list — is drawn correctly or not without any test
+  noticing.
 - **The map's arithmetic is measured; its painting is not verified automatically.**
 - **No installer, upgrade or uninstall test on a clean machine has been run.**
 - **Large drives take time.** The scan rate was measured at between roughly thirty thousand and

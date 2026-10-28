@@ -8,6 +8,17 @@
 //   2. The stylesheet actually applied.
 //   3. The policy refused nothing the application needs.
 //
+// It then opens the sheets a person can reach — Settings from the View menu,
+// "Why is it slow?" from the start screen, About and the shortcut list from Help —
+// and reads each one back. The three checks above say whether the application is
+// there; they say nothing about what it drew. A section that quietly stops
+// rendering, a list that comes back empty where content was handed in, an About
+// box with no build stamp: every one of those passed this file until this part
+// existed.
+//
+// The main process is not part of this harness, so those screens are fed a fixed
+// scripted answer, and what is asserted is what they draw from it.
+//
 // It then probes what the policy actually governs, because the reason
 // `style-src 'unsafe-inline'` could be dropped is a claim worth testing rather
 // than restating:
@@ -25,7 +36,7 @@
 // otherwise passes everything.
 //
 //   npm run build && npm run smoke
-const { app, BrowserWindow } = require("electron");
+const { app, BrowserWindow, ipcMain } = require("electron");
 const { spawnSync } = require("node:child_process");
 const { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } = require("node:fs");
 const { tmpdir } = require("node:os");
@@ -92,11 +103,24 @@ async function checkScan() {
     writeFileSync(path.join(dir, "nested", "deeper", "four.bin"), Buffer.alloc(8000));
 
     const table = await scanOnce(dir);
-    const seen = { entries: table.n, files: table.files[0], dirs: table.dirs, bytes: table.size[0], errors: table.errors };
+    // The bytes written, not the bytes on disk. `AllocationSize` as reported while
+    // enumerating a folder comes from the directory entry, and Windows does not hold
+    // it still: measured through a direct GetFileInformationByHandleEx call on a
+    // folder written a moment earlier, the same file read 4096 at 1.2 s and 0 at
+    // 2.4 s. Asserting on that made this check fail about one run in three, which is
+    // worse than not checking at all. The logical total does not move.
+    const seen = {
+      entries: table.n,
+      files: table.files[0],
+      dirs: table.dirs,
+      written: table.logical[0],
+      onDisk: table.size[0],
+      errors: table.errors,
+    };
     if (seen.files !== 4) problems.push(`the scan found ${seen.files} files, expected 4`);
     if (seen.dirs !== 3) problems.push(`the scan found ${seen.dirs} folders, expected 3`);
     if (seen.entries !== 7) problems.push(`the scan found ${seen.entries} entries, expected 7`);
-    if (!(seen.bytes >= 15_000)) problems.push(`the scan measured ${seen.bytes} bytes, expected at least the 15000 written`);
+    if (seen.written !== 15_000) problems.push(`the scan measured ${seen.written} bytes written, expected exactly the 15000 written to the folder`);
     if (seen.errors !== 0) problems.push(`the scan reported ${seen.errors} unreadable locations, expected none`);
     return seen;
   } finally {
@@ -126,11 +150,233 @@ function checkBoot() {
   return passed;
 }
 
+// ── the interface past the start screen ──────────────────────────────────────
+//
+// Everything above looks at the window from the outside: its title, its font,
+// its policy. That catches a build that will not mount, and it says nothing about
+// whether a sheet draws, because the window was never told to open one. Two
+// defects reached a release through exactly that gap, so the sheets are opened
+// here and read.
+//
+// The main process is not part of this harness, so the channels these screens
+// call are answered from a fixed script rather than from this computer. That is
+// the point: an answer is an input like any other, and what the screen does with
+// it — including what it says about a reading it could not take — is the thing
+// worth pinning. A live reading would make the result depend on whichever machine
+// the smoke test happens to run on.
+const UNREAD = "no counter of this kind on this machine";
+const STUB = {
+  build: "smoke000 · 2000-01-01 00:00",
+  drive: { path: "C:\\", label: "System", total: 500_000_000_000, free: 120_000_000_000 },
+  folders: ["C:\\smoke\\Never touch this"],
+  // 2.4% free, so the sentence has figures to carry, and one reading missing, so
+  // the "could not be read" branch has to draw as well.
+  facts: {
+    space: { totalBytes: 500_000_000_000, freeBytes: 12_000_000_000 },
+    memory: null,
+    disk: null,
+    io: null,
+    boot: null,
+    startup: null,
+    missing: { memory: UNREAD },
+  },
+  findings: [
+    {
+      id: "space-full",
+      severity: "high",
+      values: { percentFree: 2, freeBytes: 12_000_000_000, totalBytes: 500_000_000_000 },
+      action: { kind: "windows", page: "storagesense" },
+    },
+  ],
+};
+
+function stubChannels() {
+  const answer = (channel, value) => ipcMain.handle(channel, () => value);
+  answer("drives:list", [STUB.drive]);
+  answer("app:info", { version: "0.0.0", platform: "win32", home: "C:\\smoke", build: STUB.build });
+  answer("lic:status", { status: "none", plan: "free", pro: false, preservesUserData: true, payload: null, problem: null, daysLeft: null });
+  answer("ai:status", { configured: false, baseUrl: "", model: "", hasKey: false, problem: null, unlocked: false });
+  answer("protect:list", STUB.folders);
+  answer("snap:list", []);
+  answer("clean:history", []);
+  answer("clip:get", null);
+  answer("slow:check", { facts: STUB.facts, findings: STUB.findings });
+  // Answered for the same reason, and so that a screen asking for something this
+  // harness does not stub shows up as a console error rather than being lost in a
+  // list of noise nobody reads twice.
+  answer("win:setOverlay", undefined);
+  answer("win:setTitle", undefined);
+  answer("win:list", []);
+  answer("upd:check", undefined);
+}
+
+// Each sheet is opened the way a person opens it — a row in a menu, or the button
+// on the start screen — then read, then closed. A sheet that fails to open is
+// reported and the rest still runs, so one broken sheet cannot hide the others.
+async function checkSheets(win) {
+  const notes = [];
+  const run = (script) => win.webContents.executeJavaScript(script);
+
+  const openMenu = async (name) => {
+    const there = await run(`(() => {
+      const b = document.querySelector('[data-menu="' + ${JSON.stringify(name)} + '"]');
+      if (!b) return false;
+      b.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true }));
+      return true;
+    })()`);
+    if (!there) {
+      problems.push(`the ${name} menu is not in the menu bar`);
+      return false;
+    }
+    await sleep(250);
+    return true;
+  };
+
+  const clickRow = (label) =>
+    run(`(() => {
+      const want = ${JSON.stringify(label)};
+      const el = Array.from(document.querySelectorAll('[role="menuitem"]')).filter((e) => e.textContent.trim().indexOf(want) === 0)[0];
+      if (!el) return false;
+      el.click();
+      return true;
+    })()`);
+
+  // textContent and not innerText: this window is never shown, and innerText
+  // depends on layout having been brought up to date.
+  const read = () =>
+    run(`(() => {
+      const d = Array.from(document.querySelectorAll("dialog")).filter((x) => x.open)[0];
+      if (!d) return { open: false };
+      const h = d.querySelector("h2");
+      return {
+        open: true,
+        title: h ? h.textContent.trim() : "",
+        text: d.textContent || "",
+        slowRows: d.querySelectorAll(".slow-row").length,
+        slowUnread: d.querySelectorAll(".slow-missing li").length,
+        slowActions: d.querySelectorAll(".slow-row button").length,
+        keyRows: d.querySelectorAll("table.keys tbody tr").length,
+        // A row with a label and no key is the failure worth catching here, and it
+        // is not a count: the table grows and shrinks as shortcuts are added.
+        keyOrphans: Array.from(d.querySelectorAll("table.keys tbody tr")).filter(
+          (r) => !r.querySelector("th") && r.querySelectorAll("kbd").length === 0,
+        ).length,
+      };
+    })()`);
+
+  const closeSheet = async () => {
+    const clicked = await run(`(() => {
+      const d = Array.from(document.querySelectorAll("dialog")).filter((x) => x.open)[0];
+      if (!d) return false;
+      const b = Array.from(d.querySelectorAll("footer button")).filter((e) => e.textContent.trim() === "Close")[0];
+      if (!b) return false;
+      b.click();
+      return true;
+    })()`);
+    await sleep(300);
+    return clicked;
+  };
+
+  const gone = async (what) => {
+    if ((await read()).open) problems.push(`${what} stayed open after Close`);
+  };
+
+  const say = (label, detail) => notes.push({ label, detail });
+
+  // The start screen, with the drive the main process would have handed it.
+  const start = String(await run(`document.body.textContent || ""`));
+  const sawDrive = start.indexOf(STUB.drive.label) >= 0;
+  if (!sawDrive) problems.push("the start screen did not list the drive it was given");
+  say("start screen", sawDrive ? `listed ${STUB.drive.label}` : "did not list its drive");
+
+  // View → Settings.
+  if (await openMenu("view")) {
+    if (!(await clickRow("Settings"))) problems.push("the View menu has no Settings row");
+    else {
+      const s = await read();
+      if (!s.open) problems.push("View → Settings opened nothing");
+      else {
+        const wants = ["Theme", "Language", "Protection", STUB.folders[0]];
+        const missing = wants.filter((w) => s.text.indexOf(w) < 0);
+        if (missing.length > 0) problems.push(`the settings sheet does not draw: ${missing.join(", ")}`);
+        if (s.title !== "Settings") problems.push(`the settings sheet is titled "${s.title}"`);
+        say("View → Settings", missing.length === 0 ? "every row, and the protected folder" : `missing ${missing.join(", ")}`);
+        if (!(await closeSheet())) problems.push("the settings sheet has no Close button");
+        await gone("the settings sheet");
+      }
+    }
+  }
+
+  // "Why is it slow?", from the button on the start screen.
+  const asked = await run(`(() => {
+    const b = Array.from(document.querySelectorAll("button")).filter((e) => e.textContent.trim() === "Why is it slow?")[0];
+    if (!b) return false;
+    b.click();
+    return true;
+  })()`);
+  if (!asked) problems.push("the start screen has no \"Why is it slow?\" button");
+  else {
+    await sleep(700); // the sheet asks the main process, then draws the answer
+    const slow = await read();
+    if (!slow.open) problems.push("\"Why is it slow?\" opened nothing");
+    else {
+      if (slow.slowRows !== 1) problems.push(`the diagnosis drew ${slow.slowRows} findings, expected the one it was given`);
+      if (slow.text.indexOf("2% free") < 0) problems.push("the diagnosis did not put the measured figures into the sentence");
+      if (slow.slowUnread !== 1) problems.push(`the diagnosis listed ${slow.slowUnread} readings it could not take, expected 1`);
+      if (slow.text.indexOf(UNREAD) < 0) problems.push("the diagnosis did not name the reading it could not take");
+      if (slow.slowActions < 1) problems.push("the diagnosis drew no action for a finding that has one");
+      say("Why is it slow?", `${slow.slowRows} finding drawn, ${slow.slowUnread} reading named as unread`);
+      if (!(await closeSheet())) problems.push("the diagnosis has no Close button");
+      await gone("the diagnosis sheet");
+    }
+  }
+
+  // Help → About, which is where the build stamp has to appear.
+  if (await openMenu("help")) {
+    if (!(await clickRow("About"))) problems.push("the Help menu has no About row");
+    else {
+      const about = await read();
+      if (!about.open) problems.push("Help → About opened nothing");
+      else {
+        if (about.text.indexOf(STUB.build) < 0) problems.push("the About box does not show the build stamp it was handed");
+        say("Help → About", about.text.indexOf(STUB.build) >= 0 ? "showed the build stamp" : "showed no build stamp");
+        if (!(await closeSheet())) problems.push("the About box has no Close button");
+        await gone("the About box");
+      }
+    }
+
+    // Help → Keyboard shortcuts. The menu is opened again, because choosing a row
+    // closes it.
+    if (await openMenu("help")) {
+      if (!(await clickRow("Keyboard shortcuts"))) problems.push("the Help menu has no Keyboard shortcuts row");
+      else {
+        const keys = await read();
+        if (!keys.open) problems.push("Help → Keyboard shortcuts opened nothing");
+        else {
+          if (keys.keyRows < 20) problems.push(`the shortcut list drew ${keys.keyRows} rows, expected the whole table`);
+          if (keys.keyOrphans > 0) problems.push(`the shortcut list has ${keys.keyOrphans} rows with a label and no key`);
+          if (keys.text.indexOf("F11") < 0) problems.push("the shortcut list is missing a key it should list");
+          say("Help → Keyboard shortcuts", `${keys.keyRows} rows, none without a key`);
+          if (!(await closeSheet())) problems.push("the shortcut list has no Close button");
+          await gone("the shortcut list");
+        }
+      }
+    }
+  }
+
+  return notes;
+}
+
 app.on("window-all-closed", () => app.quit());
 
 app
   .whenReady()
   .then(async () => {
+    // The screens under test ask the main process for their content. Answer first,
+    // so what is read below is the screen drawing an answer rather than an error
+    // state that happens to look the same at a glance.
+    stubChannels();
+
     const win = new BrowserWindow({
       show: false,
       width: 1280,
@@ -203,6 +449,9 @@ app
     if (!refusedAttribute) problems.push("an injected style attribute was NOT refused");
     if (refusedCssom) problems.push("a CSS object model write WAS refused, which the interface needs");
 
+    // The sheets, opened the way a person opens them and read for content.
+    const sheets = await checkSheets(win);
+
     // The production scan, on a real folder with a known answer.
     let scan = null;
     try {
@@ -229,7 +478,8 @@ app
     if (scan) {
       console.log("    entries          " + scan.entries + " (expected 7)");
       console.log("    files / folders  " + scan.files + " / " + scan.dirs + " (expected 4 / 3)");
-      console.log("    bytes on disk    " + scan.bytes + " (at least 15000)");
+      console.log("    bytes written    " + scan.written + " (expected exactly 15000)");
+      console.log("    on disk          " + scan.onDisk + " (the directory entry's number, not asserted on)");
       console.log("    unreadable       " + scan.errors);
     } else {
       console.log("    did not run");
@@ -237,6 +487,9 @@ app
     console.log("");
     console.log("  the application starts");
     console.log("    main process boots, window opens   " + (booted ? "yes (correct)" : "NO"));
+    console.log("");
+    console.log("  the interface past the start screen");
+    for (const n of sheets) console.log("    " + n.label.padEnd(26) + n.detail);
     console.log("");
     console.log("  policy behaviour");
     console.log("    inline <style> element      " + (refusedStyleElement ? "refused (correct)" : "ALLOWED (unexpected)"));
