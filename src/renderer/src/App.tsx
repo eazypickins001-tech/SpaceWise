@@ -2232,11 +2232,11 @@ function StartSheet(p: {
           </button>
           {can.drop && <span>{t("start.drop")}</span>}
         </div>
-        {/* On a row of its own, because it does not choose what to scan: it asks the
-            machine a question. Sharing the row with the folder button made it read as
-            a second, lesser way to start a scan. */}
-        <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid currentColor" }}>
-          <button className="btn quiet" style={{ width: "100%" }} onClick={p.onSlow}>
+        {/* Its own row, and a real button: a quiet one has no border and no background,
+            so on a row of its own it read as plain text rather than as something to
+            press. Bordered, full width and centred, it reads as a control. */}
+        <div style={{ marginTop: 10 }}>
+          <button className="btn" style={{ width: "100%", justifyContent: "center" }} onClick={p.onSlow}>
             <Icon name="info" />
             {t("slow.title")}
           </button>
