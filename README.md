@@ -24,7 +24,7 @@ This repository is at **Phase 1–5 of 6**. Be sceptical of anything not listed 
 | Duplicate finder (size → hash, content-verified) | Working |
 | Storage intelligence (explainable categories with risk + evidence) | Working — drives the **Clean up** tab |
 | Safe cleanup planner (validation, revalidation, audit record) | Working — review dialog, per-item results, local audit log |
-| Diagnosis ("why is it slow?") | Working — six read-only readings (free space, commit charge against the commit limit, disk health, disk latency, last start-up, startup items), ranked with the evidence behind each and a link to the Windows screen that owns the fix. It changes nothing and makes no speed claim. |
+| Diagnosis ("Why Is My PC Slow?") | Working — six read-only readings (free space, commit charge against the commit limit, disk health, disk latency, last start-up, startup items), ranked with the evidence behind each and a link to the Windows screen that owns the fix. It changes nothing and makes no speed claim. |
 | Licensing (Ed25519, entitlements, offline grace) | Working — Help → Licence. Premium gates the Changes view (`compare.scans`), unlimited duplicate results (`duplicates.unlimited`) and the optional summary (`ai.summary`). |
 | Optional AI storage summary | **Off by default.** Written from the findings the rules already made, never selects anything, and the exact message is shown before it is sent. Needs a licence and an endpoint you configure. |
 | Content Security Policy | Strict — no inline styles and no inline scripts. Asserted by `npm run smoke`, which also proves it can detect a refusal. |

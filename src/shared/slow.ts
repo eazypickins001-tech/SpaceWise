@@ -1,4 +1,4 @@
-// "Why is it slow?" — the analysis, with no machine in it.
+// "Why Is My PC Slow?" — the analysis, with no machine in it.
 //
 // Every finding is a threshold applied to a number that was actually read. A
 // reading that could not be taken is null and is reported as unavailable, never

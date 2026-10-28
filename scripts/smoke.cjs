@@ -9,7 +9,7 @@
 //   3. The policy refused nothing the application needs.
 //
 // It then opens the sheets a person can reach — Settings from the View menu,
-// "Why is it slow?" from the start screen, About and the shortcut list from Help —
+// "Why Is My PC Slow?" from the start screen, About and the shortcut list from Help —
 // and reads each one back. The three checks above say whether the application is
 // there; they say nothing about what it drew. A section that quietly stops
 // rendering, a list that comes back empty where content was handed in, an About
@@ -175,6 +175,10 @@ function checkBoot() {
 // worth pinning. A live reading would make the result depend on whichever machine
 // the smoke test happens to run on.
 const UNREAD = "no counter of this kind on this machine";
+
+// The diagnosis's button, by the words written on it. One place, so renaming it does not
+// need a scavenger hunt through this file.
+const SLOW_LABEL = "Why Is My PC Slow?";
 const STUB = {
   build: "smoke000 · 2000-01-01 00:00",
   drive: { path: "C:\\", label: "System", total: 500_000_000_000, free: 120_000_000_000 },
@@ -749,25 +753,26 @@ async function checkSheets(win) {
     }
   }
 
-  // "Why is it slow?", from the button on the start screen.
+  // The diagnosis, from the button that has a row of its own on the start screen.
   const asked = await run(`(() => {
-    const b = Array.from(document.querySelectorAll("button")).filter((e) => e.textContent.trim() === "Why is it slow?")[0];
+    const b = Array.from(document.querySelectorAll("button")).filter((e) => e.textContent.trim() === ${JSON.stringify(SLOW_LABEL)})[0];
     if (!b) return false;
     b.click();
     return true;
   })()`);
-  if (!asked) problems.push("the start screen has no \"Why is it slow?\" button");
+  if (!asked) problems.push(`the start screen has no "${SLOW_LABEL}" button`);
   else {
     await sleep(700); // the sheet asks the main process, then draws the answer
     const slow = await read();
-    if (!slow.open) problems.push("\"Why is it slow?\" opened nothing");
+    if (!slow.open) problems.push(`"${SLOW_LABEL}" opened nothing`);
     else {
+      if (slow.title !== SLOW_LABEL) problems.push(`the sheet is titled "${slow.title}", not "${SLOW_LABEL}"`);
       if (slow.slowRows !== 1) problems.push(`the diagnosis drew ${slow.slowRows} findings, expected the one it was given`);
       if (slow.text.indexOf("2% free") < 0) problems.push("the diagnosis did not put the measured figures into the sentence");
       if (slow.slowUnread !== 1) problems.push(`the diagnosis listed ${slow.slowUnread} readings it could not take, expected 1`);
       if (slow.text.indexOf(UNREAD) < 0) problems.push("the diagnosis did not name the reading it could not take");
       if (slow.slowActions < 1) problems.push("the diagnosis drew no action for a finding that has one");
-      say("Why is it slow?", `${slow.slowRows} finding drawn, ${slow.slowUnread} reading named as unread`);
+      say(SLOW_LABEL, `${slow.slowRows} finding drawn, ${slow.slowUnread} reading named as unread`);
       if (!(await closeSheet())) problems.push("the diagnosis has no Close button");
       await gone("the diagnosis sheet");
     }

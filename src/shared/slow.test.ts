@@ -1,4 +1,4 @@
-// The rules behind "why is it slow?".
+// The rules behind "Why Is My PC Slow?".
 //
 // The machine is not involved: each test hands `diagnose` a fixed set of readings.
 // The two properties that matter most are here — a finding only appears when the

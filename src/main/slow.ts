@@ -1,4 +1,4 @@
-// The readings behind "why is it slow?", as taken on a real Windows machine.
+// The readings behind "Why Is My PC Slow?", as taken on a real Windows machine.
 //
 // One PowerShell call collects them, and every source inside it is guarded on its
 // own: a counter this build lacks, a log that needs administrator rights, an OEM

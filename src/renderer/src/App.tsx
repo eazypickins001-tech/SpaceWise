@@ -2230,10 +2230,16 @@ function StartSheet(p: {
             <Icon name="folder" />
             {t("start.folder")}
           </button>
-          <button className="btn quiet" onClick={p.onSlow}>
+          {can.drop && <span>{t("start.drop")}</span>}
+        </div>
+        {/* On a row of its own, because it does not choose what to scan: it asks the
+            machine a question. Sharing the row with the folder button made it read as
+            a second, lesser way to start a scan. */}
+        <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid currentColor" }}>
+          <button className="btn quiet" style={{ width: "100%" }} onClick={p.onSlow}>
+            <Icon name="info" />
             {t("slow.title")}
           </button>
-          {can.drop && <span>{t("start.drop")}</span>}
         </div>
       </div>
     </main>

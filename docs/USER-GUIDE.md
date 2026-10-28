@@ -144,12 +144,13 @@ scans is a paid feature (see below); the saved history itself is free.
 
 ---
 
-## Why is it slow?
+## Why Is My PC Slow?
 
 If the computer feels slow, the opening screen has a button for it. It reads six things and tells
 you what it found. It changes nothing, and it never reports something it could not measure.
 
-1. Open SpaceWise. On the opening screen, next to **Scan a folder…**, click **Why is it slow?**
+1. Open SpaceWise. On the opening screen, click **Why Is My PC Slow?** — it has a row of its own
+   below the scan buttons.
 2. Read the list. It is ordered worst first, and each line says how much weight to give it:
    **Most important**, **Worth a look**, or **For information**.
 3. Use the button on a line if it has one. **Look at the largest files** takes you to the files

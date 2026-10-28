@@ -35,7 +35,7 @@ real preload and the real Content Security Policy, then fails if
   Asserting on that failed about one run in three, and a check that fails by itself is worse than no
   check at all. The logical total does not move.
 - the **sheets draw**, and so do the **views**. It opens the sheets a person can reach — Settings
-  from the View menu, "Why is it slow?" from the start screen, About and the shortcut list from Help
+  from the View menu, "Why Is My PC Slow?" from the start screen, About and the shortcut list from Help
   — and reads each one back: that every settings row and the protected folder are there, that the
   diagnosis puts the measured figures into its sentence, that a reading it could not take is named as
   such rather than dropped, that the About box shows the build stamp, and that every sheet closes.

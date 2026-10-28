@@ -248,7 +248,7 @@ ipcMain.handle("snap:save", (_e, reduced: Reduced) => {
 // dropped, live in drives.ts where a test can hold them to a fake filesystem.
 ipcMain.handle("drives:list", () => listDrives());
 
-// "Why is it slow?" -------------------------------------------------------
+// "Why Is My PC Slow?" ---------------------------------------------------
 //
 // Read-only, local, and with no claim about speed: the analysis is pure and
 // returns measured facts with the thresholds they crossed, and a reading that

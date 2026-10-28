@@ -1,4 +1,4 @@
-// "Why is it slow?" — a ranked reading of six checks, the action each one implies,
+// "Why Is My PC Slow?" — a ranked reading of six checks, the action each one implies,
 // and a plain statement of anything that could not be measured.
 //
 // No score, no percentage of "faster", and nothing changed from here: the analysis
