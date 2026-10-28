@@ -16,6 +16,7 @@ import { Treemap } from "./components/Treemap";
 import { TreeView } from "./components/TreeView";
 import { ChangesPane, DupesPane, ListPane, TypesPane } from "./components/Panels";
 import { CleanupPane } from "./components/Cleanup";
+import { DesktopSettings } from "./components/Settings";
 import { LicenseDialog, PremiumGate } from "./components/License";
 import { NO_LICENSE, hasFeature } from "../../shared/entitlements";
 import type { LicenseState } from "../../shared/entitlements";
@@ -137,7 +138,7 @@ export function App() {
   const [propsOf, setPropsOf] = useState<number | null>(null);
   const [itemStat, setItemStat] = useState<ItemStat | null>(null);
   const [trash, setTrash] = useState<number[] | null>(null);
-  const [dialog, setDialog] = useState<"issues" | "about" | "keys" | "licence" | null>(null);
+  const [dialog, setDialog] = useState<"issues" | "about" | "keys" | "licence" | "settings" | null>(null);
   const [notice, setNotice] = useState<{ text: string; bad?: boolean; progress?: number; action?: { label: string; run: () => void } } | null>(null);
   const [stopping, setStopping] = useState(false);
   // What the scan is measured against for a percentage: the drive's used
@@ -801,53 +802,7 @@ export function App() {
           ]
         : []),
       { kind: "sep" },
-      { kind: "title", label: t("menu.levels") },
-      ...LEVELS.map(
-        (v): MenuEntry => ({
-          label: v === 0 ? t("menu.levelsAll") : String(v),
-          checked: levels === v,
-          run: () => {
-            setLevels(v);
-            save("levels", String(v));
-          },
-        }),
-      ),
-      { kind: "sep" },
-      { kind: "title", label: t("menu.theme") },
-      ...FAMILIES.map(
-        (v): MenuEntry => ({
-          label: t(v === "grid" ? "menu.themeGrid" : "menu.themePaper"),
-          checked: family === v,
-          run: () => {
-            setFamily(v);
-            save("family", v);
-          },
-        }),
-      ),
-      { kind: "sep" },
-      { kind: "title", label: t("menu.mode") },
-      ...MODES.map(
-        (v): MenuEntry => ({
-          label: t(v === "system" ? "menu.modeSystem" : v === "light" ? "menu.modeLight" : "menu.modeDark"),
-          checked: mode === v,
-          run: () => {
-            setMode(v);
-            save("mode", v);
-          },
-        }),
-      ),
-      { kind: "sep" },
-      { kind: "title", label: t("menu.language") },
-      ...(["en", "pt"] as const).map(
-        (v): MenuEntry => ({
-          label: v === "en" ? "English" : "Português",
-          checked: lang === v,
-          run: () => {
-            setLang(v);
-            save("lang", v);
-          },
-        }),
-      ),
+      { label: t("menu.settings"), icon: "grid", keys: MOD + ",", run: () => setDialog("settings") },
       { kind: "sep" },
       { label: t("menu.fullscreen"), keys: "F11", run: () => void window.api.toggleFullScreen() },
     ],
@@ -987,6 +942,9 @@ export function App() {
       } else if (mod && key === "o") {
         e.preventDefault();
         pickFolder();
+      } else if (mod && key === ",") {
+        e.preventDefault();
+        setDialog("settings");
       } else if (mod && key === "f") {
         e.preventDefault();
         // The search field sits in the toolbar that a running scan hides, so
@@ -1947,6 +1905,7 @@ export function App() {
                     [t("keys.closeWindow"), MOD + "+W"],
                     [t("keys.menuBar"), "Alt"],
                     [t("keys.fullscreen"), "F11"],
+                    [t("keys.settings"), MOD + ","],
                     [t("keys.thisList"), "F1"],
                   ] as string[][]
                 ).map((row, i) =>
@@ -1980,6 +1939,43 @@ export function App() {
       )}
 
       {dialog === "licence" && <LicenseDialog state={licence} t={t} onClose={() => setDialog(null)} onChanged={setLicence} />}
+
+      {dialog === "settings" && (
+        <DesktopSettings
+          t={t}
+          family={family}
+          families={FAMILIES.map((v) => ({ value: v, label: t(v === "grid" ? "menu.themeGrid" : "menu.themePaper") }))}
+          onFamily={(v) => {
+            setFamily(v);
+            save("family", v);
+          }}
+          mode={mode}
+          modes={MODES.map((v) => ({
+            value: v,
+            label: t(v === "system" ? "menu.modeSystem" : v === "light" ? "menu.modeLight" : "menu.modeDark"),
+          }))}
+          onMode={(v) => {
+            setMode(v);
+            save("mode", v);
+          }}
+          lang={lang}
+          langs={[
+            { value: "en" as Lang, label: "English" },
+            { value: "pt" as Lang, label: "Português" },
+          ]}
+          onLang={(v) => {
+            setLang(v);
+            save("lang", v);
+          }}
+          levels={levels}
+          levelChoices={LEVELS.map((v) => ({ value: v as number, label: v === 0 ? t("menu.levelsAll") : String(v) }))}
+          onLevels={(v) => {
+            setLevels(v);
+            save("levels", String(v));
+          }}
+          onClose={() => setDialog(null)}
+        />
+      )}
 
       {dialog === "about" && (
         <Dialog onClose={() => setDialog(null)}>

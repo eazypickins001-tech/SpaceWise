@@ -1218,6 +1218,37 @@ dialog.wide {
   width: min(620px, calc(100vw - 48px));
 }
 
+/* Settings ------------------------------------------------------------- */
+.set-list {
+  display: flex;
+  flex-direction: column;
+}
+.set-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 11px 0;
+  border-bottom: 1px solid var(--line);
+}
+.set-row:first-child {
+  padding-top: 0;
+}
+.set-row:last-child {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+.set-what {
+  font-weight: 600;
+  min-width: 0;
+}
+.set-choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
 /* Floating things ------------------------------------------------------- */
 
 .tip {
