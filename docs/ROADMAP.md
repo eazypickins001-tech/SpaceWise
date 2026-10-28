@@ -1,7 +1,8 @@
 # Roadmap
 
-Status as of the Phase 1–3 checkpoint. Each phase states what was required, what exists, and
-what is honestly still missing.
+Status as of the `v0.1.1` release. Each phase states what was required, what exists, and what is
+honestly still missing. Where a line here disagrees with the code or with `docs/TESTING.md`, those
+are right and this file is the thing to fix.
 
 ---
 
@@ -25,28 +26,29 @@ a responsive interface.
 | Criterion | State |
 | --- | --- |
 | Scan a selected folder / drive | Working (inherited) |
-| Correct sizes on a **known** test dataset | **Partially verified.** A real-filesystem test now walks a fixture tree and asserts the root total to the byte, and the cleanup pipeline end to end. Hard links, junctions, long paths and unreadable directories are still uncovered. |
+| Correct sizes on a **known** test dataset | **Substantially verified.** The lister is tested against hard links, junctions, paths over 260 characters, unusual names and empty files, and asserts that what a file occupies is never less than its length. `npm run smoke` runs the built scan worker on a known tree and checks the exact entry, file, folder and byte counts. Not covered: an unreadable folder driven through `scanworker`. |
 | Progress and cancellation | Working (inherited); latency unmeasured |
 | Inaccessible files handled | Working; counted and sampled, not fatal |
 | Largest files and folders | Working, and now covered by new tests |
 | File-type breakdown | Working (inherited) |
 | Responsive interface | Working by design (workers); unmeasured |
-| Aggregation correctness | **Now tested** — 15 tests, including the logical-vs-on-disk invariant |
+| Aggregation correctness | **Tested** — `walk.test.ts` walks a fake disk and a real one and pins the totals, including the logical-versus-on-disk invariant |
 
-Remaining: extend the fixture tree to hard links, junctions, >260-character paths, unreadable
-directories and unusual filenames, and assert the totals there too. A plain tree is now
-covered; the awkward cases are not.
+Remaining: an unreadable folder driven through the built `scanworker`, and the totals of a tree that
+contains links and long paths *through that worker*. The awkward entries themselves are pinned at
+the lister level (`lister.test.ts`), and the walk is tested against a fake disk and a real one, so
+what is missing is the combination rather than any one piece.
 
 ---
 
 ## Phase 2 — Storage visualisation: **working, inherited**
 
 Treemap and tree in sync, drill-down, breadcrumb, search, sorting, reveal in Explorer, empty
-and error states. Inherited from the foundation and building cleanly. Not independently
-re-verified.
+and error states. Inherited from the foundation and building cleanly. The treemap's layout
+arithmetic is now tested against known input; the drawing is not (see below).
 
-Remaining: a treemap layout unit test (known input → known rectangles). The layout code is
-untested even upstream.
+Remaining: the treemap's *paint*. `treemap.test.ts` pins the layout — known input, known rectangles
+— but drawing it needs a canvas, and no check reaches that. Recorded in `docs/TESTING.md`.
 
 ---
 
@@ -66,20 +68,25 @@ untested even upstream.
 The `ClutterPane` this replaced was deleted rather than left beside the new tab, along with
 the `findClutter` detector it used, so there is exactly one cleanup surface.
 
-What this phase still does not have: no keyboard-driven selection, and no way to exclude a folder
-from *future* scans (only from the current cleanup).
+What this phase still does not have: keyboard-driven selection in the tab, and no way to exclude a
+folder from *future scans*. What it does now have is the narrower promise that a folder can be
+protected from cleanup permanently — Settings → Protection applies to every run from then on, not
+only to the one in front of you.
 
 ---
 
 ## Phase 4 — Duplicates and history: **working, inherited**
 
 Content-verified duplicate groups (size → hash), snapshot save and compare. Both inherited.
-Duplicate detection is not yet tested against planted byte-identical files, and the
-"reclaimable" figure for duplicates is not yet separated from the raw sum of duplicate sizes.
+Duplicate detection is now tested against planted byte-identical files (`dupfind.test.ts`), and the
+reclaimable figure is separated from the raw sum: `reclaimableBytes` in `shared/dupes.ts` counts the
+space the copies occupy on disk, and only while two or more of them are left. The free tier's cap of
+the 20 largest sets is applied when the list is drawn, so clearing a visible set brings the next one
+in rather than hiding it for good.
 
 ---
 
-## Phase 5 — Premium readiness: **verification and the boundary are done; the key is not**
+## Phase 5 — Premium readiness: **complete, except that nothing sells it**
 
 | Criterion | State |
 | --- | --- |
@@ -91,8 +98,8 @@ Duplicate detection is not yet tested against planted byte-identical files, and 
 | A premium feature is actually gated | **Done** — the Changes view, behind a panel that explains itself |
 | Activate, show status, remove | **Done** — Help → Licence |
 | Vendor key tooling | **Done** — `npm run keygen`, verified end to end against the app's verifier |
-| Licence key generated and embedded | **Not done — needs the owner's private key**, which cannot be created for them |
-| Payment provider | **Not done** |
+| Licence key generated and embedded | **Done** — `EMBEDDED_PUBLIC_KEY` carries the real vendor public key, the build accepts licences signed with the matching private key, and an owner licence was issued. The private key is not in this repository and must never be: rotating it invalidates every licence already issued |
+| Payment provider | **Not done, deliberately deferred** — nothing sells a licence yet. The owner's decision is to have testers use the app first, and to take payments and signing together when selling begins |
 | More than one feature gated | **Done** — `compare.scans`, `duplicates.unlimited` and `ai.summary` each gate something |
 
 `EMBEDDED_PUBLIC_KEY` now carries a real vendor public key, so a licence unlocks the premium
@@ -107,12 +114,12 @@ than a bug.
 | Criterion | State |
 | --- | --- |
 | Windows build succeeds | **Verified** — `npm run build` exits 0 |
-| Packaging succeeds | `dist:dir` verified; the NSIS installer target is configured but not yet run end to end |
-| Critical tests pass | **Verified** — 307/307 with 0 failures at the last run. Re-run it rather than trusting the number here; this line is a moving target |
+| Packaging succeeds | **Verified** — `npm run dist` builds the NSIS installer and the portable exe; the installer is checked against `latest.yml` before upload, and two releases have shipped from that path (`v0.1.0`, `v0.1.1`) |
+| Critical tests pass | **Verified** — `npm test`: 339 tests, 0 failures. `npm run smoke` passes, and `npm run verify:feed` proves the published release reaches an updater. Re-run all three rather than trusting these numbers |
 | Known limitations documented | **Done** — in the README, `docs/TESTING.md` and `docs/SECURITY.md` |
 | Licence notices preserved | **Done** — `THIRD-PARTY-NOTICES.md` including the SIL OFL font notice |
 | Code signing | **Blocked** — needs a certificate |
-| A user can install, scan, inspect, clean and reopen unaided | **Partly verified** — the app runs, and the cleanup pipeline is tested against a real tree. Not done: the NSIS installer has never been built or run, and nobody has walked the journey by hand end to end |
+| A user can install, scan, inspect, clean and reopen unaided | **Partly verified** — the installer exists and has shipped, and the built interface is driven end to end by `npm run smoke`: every sheet and tab, a delete, a bulk delete, a duplicate search and a cleanup review, removing real files. **Not done:** nobody has walked the whole journey by hand on a clean machine. The owner is doing that next, on another machine |
 
 ---
 
@@ -134,12 +141,20 @@ the repository was private, so the application could not reach its own feed at a
 and `npm run verify:feed` proves the feed is readable without credentials, that an older install is
 offered the published version, and that an install already on it is not offered it again.
 
-1. **Buy a code-signing certificate** and wire signing into the release job. Declined for now,
-   deliberately: the consequence is the SmartScreen warning on first run and nothing else is
-   blocked. It matters more now that the update feed actually delivers, because the download is
-   checked by a hash published from the same place as the binary — integrity, not authenticity —
-   and because the installer an update runs is exactly the unsigned kind SmartScreen distrusts.
-   See `SECURITY.md`.
+1. **Walk the whole journey by hand on a clean machine** — install, scan, inspect, clean, reopen,
+   update, uninstall — and write down anything that surprises anyone. The owner is doing this on
+   another machine. Nothing in the product has to change for it, which is the point: the checks
+   cover the interface, and this covers the machine.
+2. **Put it in front of testers.** No repository work; the exercise is what they find. The release
+   to install is `v0.1.1`, and the app now checks for updates itself (Help → Check for updates), so
+   a fault found by a tester can reach them without a reinstall.
+3. **A code-signing certificate**, wired into the release job — before selling, and not before
+   testing. The consequence of going without is the SmartScreen warning on first run; it matters
+   more once the update feed delivers, because the download is checked by a hash published from the
+   same place as the binary (integrity, not authenticity) and the installer an update runs is exactly
+   the unsigned kind SmartScreen distrusts. See `SECURITY.md`.
+4. **A payment path**, taken together with item 3. Nothing sells a licence today; licensing itself
+   is finished and verified, so this is the only thing between the premium tier and a sale.
 
 ## Explicitly out of scope
 
