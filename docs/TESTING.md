@@ -81,6 +81,18 @@ themselves a few rows tall — which made these checks read half-drawn panes and
 three, depending on how busy the machine was. A hidden window is enough for the policy checks; it is
 not enough for checks that have to read what was drawn.
 
+The folder the views are driven with is built from sizes this machine reports honestly, and it is
+checked before anything leans on it. Windows does not commit the allocation of a large fresh write
+promptly: measured here, a 12 MiB file enumerates as **0 bytes on disk** for seconds after it is
+written, while a 1 MiB file is honest every time. That is the filesystem's business, not the
+application's, and it is written down because it looked like five separate product faults — a
+duplicate saving of 768 KB, files missing from the largest list, a folder the cleanup rules could
+not see. So the duplicate pair is 1 MiB (and the check sets the pane's own minimum to 1 MB first,
+which a person can do too), and the folder the cleanup rules have to recognise is made of forty
+50 KB files rather than a few large ones. `checkFixture` reads the scan back and fails with that
+explanation if the machine ever disagrees, rather than letting the checks below report something
+that is not true.
+
 It also asserts what the policy *should* refuse, because a check that cannot fail is not a check:
 
 | Written by | Expected | Why it is asserted |

@@ -373,17 +373,24 @@ const VIEW_FIXTURE = {
 // fixture, the assertions and the report cannot drift apart.
 const DOOMED = ["doomed-one.bin", "doomed-two.bin", "doomed-three.bin"];
 
-// The duplicate pair, and a file of exactly the same size with different bytes in
-// it. The pane's own minimum is 10 MiB, so these are above it and a search finds
-// them without touching the control — which makes the wasted figure an assertion
-// about the fixture rather than about a control the harness had to drive first.
+// The duplicate pair, and a file of exactly the same size with different bytes in it.
+//
+// One MiB, not tens of them, because of what Windows does with a large fresh write:
+// measured on this machine, a 12 MiB file can enumerate as **0 bytes on disk** for
+// seconds after it is written, while a 1 MiB file is reported honestly every time. That
+// is not the application's fault and must not be mistaken for one — it made the saving
+// read 768 KB, pushed files out of the largest list, and hid a folder from the cleanup
+// rules, all of which looked like product faults. The pane's own minimum is 10 MB, so
+// the check sets its picker to 1 MB first, which is a gesture a person makes too.
 const TWINS = ["twin-a.bin", "twin-b.bin"];
 const DECOY = "twin-odd.bin";
-const TWIN_BYTES = 12 * 1024 * 1024;
+const TWIN_BYTES = 1024 * 1024;
 
-// A folder the cleanup rules recognise by name alone, and big enough to clear their
-// 1 MiB floor.
+// A folder the cleanup rules recognise by name alone, and made of enough small files
+// that its total clears their 1 MiB floor however the machine rounds them.
 const CACHE = "node_modules";
+const CACHE_FILES = 40;
+const CACHE_FILE_BYTES = 50_000;
 
 async function makeFixture() {
   const dir = mkdtempSync(path.join(tmpdir(), "spacewise-view-"));
@@ -402,9 +409,44 @@ async function makeFixture() {
   writeFileSync(path.join(dir, DECOY), odd);
 
   mkdirSync(path.join(dir, CACHE, "pkg"), { recursive: true });
-  for (let i = 0; i < 4; i++) writeFileSync(path.join(dir, CACHE, "pkg", `chunk-${i}.bin`), Buffer.alloc(400_000, i));
+  for (let i = 0; i < CACHE_FILES; i++) {
+    writeFileSync(path.join(dir, CACHE, "pkg", `chunk-${i}.bin`), Buffer.alloc(CACHE_FILE_BYTES, i));
+  }
 
   return { dir, table: await scanOnce(dir) };
+}
+
+// What the scan says each of these is, by name, so the fixture can be asked whether
+// this machine has committed it yet.
+function sizesOf(table, names) {
+  const decoder = new TextDecoder();
+  const out = new Map();
+  for (let i = 0; i < table.n; i++) {
+    const name = decoder.decode(table.names.subarray(table.nameOff[i], table.nameOff[i + 1]));
+    if (names.indexOf(name) >= 0) out.set(name, { onDisk: table.size[i], logical: table.logical[i] });
+  }
+  return out;
+}
+
+// The fixture has to read back what it wrote before any check leans on it. This exists
+// because it did not, and the failures it caused pointed at five different innocent
+// parts of the application.
+function checkFixture(table) {
+  const sizes = sizesOf(table, TWINS.concat(DECOY, CACHE));
+  for (const name of TWINS.concat(DECOY)) {
+    const got = sizes.get(name);
+    if (!got) problems.push(`the fixture's ${name} is not in the scan at all`);
+    else if (got.onDisk < got.logical) {
+      problems.push(
+        `the fixture's ${name} holds ${got.logical} bytes but this machine reports ${got.onDisk} of them on disk,` +
+          ` so the filesystem has not committed it yet — anything below that depends on its size would fail for that reason rather than for the product's`,
+      );
+    }
+  }
+  const cache = sizes.get(CACHE);
+  if (!cache || cache.onDisk < 1024 * 1024) {
+    problems.push(`the fixture's ${CACHE} reads ${cache ? cache.onDisk : "nothing"} bytes on disk, under the 1 MiB floor the cleanup rules use`);
+  }
 }
 
 // ── driving the interface ────────────────────────────────────────────────────
@@ -866,8 +908,11 @@ async function checkInteraction(win, fixture) {
     }
   }
 
-  // 4. Two rows ticked, then the pane's own Delete button: both have to go.
-  if (!(await openTab(win, "Largest"))) problems.push("the interaction pass found no Largest tab");
+  // 4. Two rows ticked, then the pane's own Delete button: both have to go. Ticked in
+  // the tree rather than in the largest list, because the tree's rows are the folder's
+  // own children — a fixed set — where a list's rows and their order follow the sizes
+  // the filesystem reports, which is not the product's business to get right here.
+  if (!(await openTab(win, "Tree"))) problems.push("the interaction pass found no Tree tab");
   let tickedCount = 0;
   for (const name of [DOOMED[1], DOOMED[2]]) {
     if (!(await scrollToRow(win, name))) continue;
@@ -886,10 +931,12 @@ async function checkInteraction(win, fixture) {
         rows: document.querySelectorAll(".trow").length,
         labels: Array.from(document.querySelectorAll('input[type="checkbox"]')).map((e) => e.getAttribute("aria-label")),
         grid: grid ? grid.clientHeight + "/" + grid.scrollHeight + " at " + grid.scrollTop : "no grid",
+        listed: Array.from(document.querySelectorAll(".trow")).map((r) => (r.textContent || "").replace(/\\s+/g, " ").trim().slice(0, 60)),
       };
     })()`);
     problems.push(
-      `only ${tickedCount} of the two files could be ticked in the largest list (${seen.rows} rows on screen, grid ${seen.grid}, labels [${seen.labels.join(" / ")}])`,
+      `only ${tickedCount} of the two files could be ticked in the tree (${seen.rows} rows on screen, grid ${seen.grid},` +
+        ` labels [${seen.labels.join(" / ")}], rows [${seen.listed.join(" | ")}])`,
     );
   } else {
     await sleep(250);
@@ -927,7 +974,7 @@ async function checkInteraction(win, fixture) {
             await sleep(100);
             left = await stillListed();
           }
-          if (left.length > 0) problems.push(`the largest list still shows ${left.join(" and ")} after a bulk delete`);
+          if (left.length > 0) problems.push(`the tree still shows ${left.join(" and ")} after a bulk delete`);
           else notes.push({ label: "delete two at once", detail: `${DOOMED[1]} and ${DOOMED[2]} left the disk and the list` });
         }
       }
@@ -950,6 +997,23 @@ async function checkDuplicates(win, fixture) {
     problems.push("the duplicate check found no Duplicates tab");
     return notes;
   }
+  // The pane's own minimum, set to the smallest it offers. Ten megabytes is its
+  // default and the fixture's pair is 1 MiB, so this is a real choice in the control —
+  // and it is driven with the native setter, because React holds the value itself and
+  // assigning to `select.value` alone does not reach it.
+  const chose = await win.webContents.executeJavaScript(`(() => {
+    const sel = document.querySelector("aside.schedule .pane select");
+    if (!sel) return null;
+    const setter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value").set;
+    setter.call(sel, String(1024 * 1024));
+    sel.dispatchEvent(new Event("change", { bubbles: true }));
+    return sel.value;
+  })()`);
+  if (chose !== String(1024 * 1024)) {
+    problems.push(`the duplicate pane's minimum could not be set to 1 MB (the control reads ${JSON.stringify(chose)})`);
+  }
+  await sleep(150);
+
   if (!(await pressButton(win, "pane", "Look for duplicates"))) {
     problems.push("the duplicate pane offers no way to start a search");
     return notes;
@@ -1130,6 +1194,7 @@ app
     } catch (err) {
       problems.push(`the fixture could not be scanned: ${err && err.message ? err.message : String(err)}`);
     }
+    if (fixture) checkFixture(fixture.table);
 
     const win = new BrowserWindow({
       show: false,
