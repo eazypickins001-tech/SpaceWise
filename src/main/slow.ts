@@ -22,7 +22,7 @@ try {
   $d = @(Get-PhysicalDisk)
   $o.diskHealth = (($d | ForEach-Object { "$($_.HealthStatus)" }) -join ';')
   $o.diskState  = (($d | ForEach-Object { "$($_.OperationalStatus)" }) -join ';')
-  if ($d.Count -eq 0) { $o.diskError = 'Windows did not report any physical disk' }
+  if ($d.Count -eq 0) { $o.diskError = "Windows' storage provider reported no physical disks on this machine" }
 } catch { $o.diskError = "$($_.Exception.Message)" }
 try {
   $r = Get-PhysicalDisk | Get-StorageReliabilityCounter | Select-Object -First 1
@@ -89,6 +89,21 @@ function reason(error: unknown): string {
   return e?.code ?? e?.message ?? "it could not be read";
 }
 
+// Windows' own words for a refused read are alarming and say nothing about what
+// happened. "Attempted to perform an unauthorized operation." is the .NET text for an
+// access-denied on an event log: it means the log is kept for administrators, and not
+// that something improper was tried. A person reading the sheet should not have to know
+// that, so it is translated here — and the sentence says plainly that no elevation is
+// asked for, because the alternative reading of "unauthorized" is that the application
+// did something it should not have.
+export function explainReason(what: string, error: string): string {
+  const denied = /unauthorized operation|access is denied|access denied|0x80070005|(?:do|does) not have permission/i;
+  if (denied.test(error)) {
+    return `Windows keeps ${what} for administrators, and SpaceWise runs as you, without administrator rights`;
+  }
+  return error;
+}
+
 export async function readSlowFacts(): Promise<SlowFacts> {
   const facts: SlowFacts = { space: null, memory: null, disk: null, io: null, boot: null, startup: null, missing: {} };
   if (process.platform !== "win32") {
@@ -122,7 +137,7 @@ export async function readSlowFacts(): Promise<SlowFacts> {
   const health = (raw.diskHealth ?? "").split(";").filter(Boolean);
   const state = (raw.diskState ?? "").split(";").filter(Boolean);
   if (raw.diskError || health.length === 0) {
-    facts.missing.disk = raw.diskError ?? "Windows did not report any physical disk";
+    facts.missing.disk = explainReason("the disk health report", raw.diskError ?? "Windows' storage provider reported no physical disks on this machine");
   } else {
     // The worst disk is the one worth mentioning; keeping the largest copy of a
     // healthy one would hide a failing second drive.
@@ -140,7 +155,7 @@ export async function readSlowFacts(): Promise<SlowFacts> {
   const committed = num(raw.committedBytes);
   const limit = num(raw.commitLimit);
   if (raw.memoryError || committed === null || limit === null || limit <= 0) {
-    facts.missing.memory = raw.memoryError ?? "Windows did not report the memory counters";
+    facts.missing.memory = explainReason("the memory counters", raw.memoryError ?? "Windows did not report the memory counters");
   } else {
     facts.memory = { commitLimitBytes: limit, committedBytes: committed };
   }
@@ -148,14 +163,14 @@ export async function readSlowFacts(): Promise<SlowFacts> {
   const transfer = num(raw.transfer);
   const queue = num(raw.queue);
   if (raw.ioError || transfer === null || queue === null) {
-    facts.missing.io = raw.ioError ?? "the disk counters were not available";
+    facts.missing.io = explainReason("the disk counters", raw.ioError ?? "the disk counters were not available");
   } else {
     facts.io = { secondsPerTransfer: transfer, queueLength: queue };
   }
 
   const bootMs = num(raw.bootMs);
   if (raw.bootError || bootMs === null || bootMs <= 0) {
-    facts.missing.boot = raw.bootError ?? "Windows kept no boot measurement";
+    facts.missing.boot = explainReason("the start-up log", raw.bootError ?? "Windows kept no boot measurement");
   } else {
     // The per-application breakdown is events 101-110 and is deliberately not read
     // yet: nothing is shown that this build cannot stand behind.
@@ -164,7 +179,7 @@ export async function readSlowFacts(): Promise<SlowFacts> {
 
   const startup = num(raw.startup);
   if (raw.startupError || startup === null || startup < 0) {
-    facts.missing.startup = raw.startupError ?? "Windows did not list the startup items";
+    facts.missing.startup = explainReason("the start-up item list", raw.startupError ?? "Windows did not list the startup items");
   } else {
     facts.startup = { count: startup };
   }

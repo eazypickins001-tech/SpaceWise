@@ -163,6 +163,11 @@ system can commit. Whether a disk reports itself healthy, plus its wear and erro
 long disk transfers are taking. What Windows measured the last start-up at. How many items start
 when you sign in.
 
+Two of those live in places Windows keeps for administrators — the start-up measurement is one —
+and SpaceWise runs as you, so a reading may say it needs administrator rights. It says that rather
+than guessing, and it never asks for elevation to get it. Some machines' storage drivers report no
+physical disk at all; that is named too, never counted as healthy.
+
 **What it will not do.** It does not stop a service, disable a start-up item, end a program, change
 the registry or clean anything, and it gives your PC no score. It will never tell you it made the
 machine faster.

@@ -115,7 +115,7 @@ than a bug.
 | --- | --- |
 | Windows build succeeds | **Verified** — `npm run build` exits 0 |
 | Packaging succeeds | **Verified** — `npm run dist` builds the NSIS installer and the portable exe; the installer is checked against `latest.yml` before upload, and two releases have shipped from that path (`v0.1.0`, `v0.1.1`) |
-| Critical tests pass | **Verified** — `npm test`: 339 tests, 0 failures. `npm run smoke` passes, and `npm run verify:feed` proves the published release reaches an updater. Re-run all three rather than trusting these numbers |
+| Critical tests pass | **Verified** — `npm test`: 342 tests, 0 failures. `npm run smoke` passes, and `npm run verify:feed` proves the published release reaches an updater. Re-run all three rather than trusting these numbers |
 | Known limitations documented | **Done** — in the README, `docs/TESTING.md` and `docs/SECURITY.md` |
 | Licence notices preserved | **Done** — `THIRD-PARTY-NOTICES.md` including the SIL OFL font notice |
 | Code signing | **Blocked** — needs a certificate |
