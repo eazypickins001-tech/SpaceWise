@@ -164,6 +164,10 @@ export function App() {
   // Which build this is. The version number never changes between builds, so
   // without this "is this the copy I just built?" has no answer on screen.
   const [appBuild, setAppBuild] = useState("");
+  // Folders this person protects from cleanup. Kept here only so the settings
+  // sheet can draw them; the rule itself lives in the main process, where the
+  // deletion happens.
+  const [protectedFolders, setProtectedFolders] = useState<string[]>([]);
   const askedUpdate = useRef(false);
   const view = useRef({ disk, zoom, selected, expanded, trail, menu, barFocus });
   view.current = { disk, zoom, selected, expanded, trail, menu, barFocus };
@@ -220,6 +224,7 @@ export function App() {
       setAppVersion(i.version);
       setAppBuild(i.build);
     });
+    void window.api.protectedFolders().then(setProtectedFolders);
     const timer = setTimeout(() => void window.api.checkUpdate(), 4000);
     return () => clearTimeout(timer);
   }, [refreshDrives]);
@@ -762,6 +767,17 @@ export function App() {
     setSyncLost(false);
     setSync(next);
     save("sync", next ? "on" : "off");
+  };
+
+  // Adding and removing a protected folder. Each call answers with the list the
+  // main process now holds, so what is drawn cannot disagree with what is
+  // enforced.
+  const addProtected = async (): Promise<void> => {
+    const path = await window.api.pickFolder();
+    if (path) setProtectedFolders(await window.api.addProtectedFolder(path));
+  };
+  const removeProtected = (path: string): void => {
+    void window.api.removeProtectedFolder(path).then(setProtectedFolders);
   };
 
   // Menus ------------------------------------------------------------------
@@ -1973,6 +1989,9 @@ export function App() {
             setLevels(v);
             save("levels", String(v));
           }}
+          protectedFolders={protectedFolders}
+          onAddProtected={() => void addProtected()}
+          onRemoveProtected={removeProtected}
           onClose={() => setDialog(null)}
         />
       )}

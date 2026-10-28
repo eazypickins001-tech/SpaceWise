@@ -25,6 +25,7 @@ import { refuseReason } from "./scope";
 import type { Reach } from "./scope";
 import { openableUrl } from "./external";
 import { listDrives } from "./drives";
+import { addProtected, readProtected, removeProtected } from "./protection";
 import { fsProbe } from "./probe";
 import type { DirResult } from "./dirworker";
 import type {
@@ -395,12 +396,23 @@ function inScope(s: Session, scope: string): boolean {
   return false;
 }
 
+// Where the folders this person protects from cleanup are kept. A rule file the
+// interface owned would be advice; this is read where the deletion happens.
+const protectedFile = (): string => join(app.getPath("userData"), "protected-folders.json");
+
 // Every handler that turns a renderer-supplied path into a filesystem action
 // asks this first. See src/main/scope.ts for what the two reaches mean and for
 // which half of the policy survives a compromised renderer.
 function refused(s: Session | undefined, path: string, reach: Reach): string | null {
   if (!s) return "this window is not part of the application";
-  return refuseReason({ path, roots: s.roots, reach });
+  return refuseReason({
+    path,
+    roots: s.roots,
+    reach,
+    // Only a deletion consults the person's own list; scope.ts ignores it for
+    // every other reach, so the decision stays in one place.
+    extraProtected: reach === "target" ? readProtected(protectedFile()) : undefined,
+  });
 }
 
 ipcMain.handle("clean:plan", (e, scopeArg: string, candidates: Candidate[], action: Action): CleanupPlan => {
@@ -416,7 +428,7 @@ ipcMain.handle("clean:plan", (e, scopeArg: string, candidates: Candidate[], acti
       estimatedBytes: 0,
     };
   }
-  return buildPlan(scope, candidates ?? [], wanted, fsProbe);
+  return buildPlan(scope, candidates ?? [], wanted, fsProbe, readProtected(protectedFile()));
 });
 
 // The one filesystem call a run makes, injected into the pure loop so the loop
@@ -439,7 +451,7 @@ ipcMain.handle("clean:run", async (e, plan: CleanupPlan): Promise<CleanupRunResu
     return { outcomes: [] as ItemOutcome[], invalidated: [], record: null, error: "ESCOPE" };
   }
   // Rule 4: every path is rechecked now, not when the plan was drawn.
-  const { ready, invalidated } = revalidate(plan, fsProbe);
+  const { ready, invalidated } = revalidate(plan, fsProbe, readProtected(protectedFile()));
   // Cleared here, not after, so a stop asked for while the plan was still being
   // drawn is not lost. It applies to this run only.
   s.cleanStop = false;
@@ -466,6 +478,23 @@ ipcMain.handle("clean:cancel", (e) => {
 });
 
 ipcMain.handle("clean:history", (_e, limit?: number): AuditRecord[] => readAudit(auditFile(), Number(limit) || 20));
+
+// Folders the person protects from cleanup ---------------------------------
+//
+// Additive only. Nothing here can unlock anything: adding a folder can only make
+// the policy refuse more, and the built-in protected list is not editable from
+// the interface at all.
+ipcMain.handle("protect:list", () => readProtected(protectedFile()));
+
+ipcMain.handle("protect:add", (_e, pathArg: string) => {
+  const p = normalizePath(String(pathArg ?? ""));
+  // Only a folder that is actually there may be added. A typo would otherwise sit
+  // in the rules looking like protection while protecting nothing.
+  if (p === "" || !existsSync(p)) return readProtected(protectedFile());
+  return addProtected(protectedFile(), p);
+});
+
+ipcMain.handle("protect:remove", (_e, pathArg: string) => removeProtected(protectedFile(), String(pathArg ?? "")));
 
 // Licensing ---------------------------------------------------------------
 //

@@ -349,3 +349,48 @@ test("what the recheck refused is reported as skipped, with its own reason", asy
   assert.equal(outcomes[1].status, "skipped");
   assert.match(outcomes[1].error ?? "", /removed after/);
 });
+
+// Folders the person adds to the list cleanup must never touch. The only thing
+// they may do is refuse more, so these tests check both directions: the protected
+// folder is refused, and nothing that was already refused becomes acceptable.
+
+test("a folder the person protects is refused, and so is everything inside it", () => {
+  const extra = ["C:\\work\\app\\keep"];
+  const inside = validatePath("C:\\work\\app\\keep\\deep\\file.bin", "C:\\work\\app", extra);
+  assert.equal(inside.ok, false);
+  assert.match((inside as { reason: string }).reason, /protect/);
+
+  const itself = validatePath("C:\\work\\app\\keep", "C:\\work\\app", extra);
+  assert.equal(itself.ok, false);
+
+  // A sibling folder is untouched: protecting one does not freeze the scan.
+  assert.equal(validatePath("C:\\work\\app\\drop", "C:\\work\\app", extra).ok, true);
+});
+
+test("protecting a folder can never make a refused path acceptable", () => {
+  const r = validatePath("C:\\Windows\\Temp", "C:\\", ["C:\\work\\app"]);
+  assert.equal(r.ok, false);
+  assert.match((r as { reason: string }).reason, /operating system/);
+});
+
+test("the plan records which protected folder refused the item", () => {
+  const probe = probeOf({ "C:\\work\\app\\keep\\a": { size: 10, mtime: 1 } });
+  const plan = buildPlan(
+    "C:\\work\\app",
+    [{ id: 1, path: "C:\\work\\app\\keep\\a", bytes: 10, risk: "safe" }],
+    "trash",
+    probe,
+    ["C:\\work\\app\\keep"],
+  );
+  assert.equal(plan.items.length, 0);
+  assert.equal(plan.rejected.length, 1);
+  assert.match(plan.rejected[0].reason, /C:\\work\\app\\keep/);
+});
+
+test("revalidation refuses an item inside a folder protected after the plan was drawn", () => {
+  const probe = probeOf({ "C:\\work\\a": { size: 10, mtime: 100 } });
+  const plan = buildPlan("C:\\work", [{ id: 1, path: "C:\\work\\a", bytes: 10, risk: "safe" }], "trash", probe);
+  const { ready, invalidated } = revalidate(plan, probe, ["C:\\work\\a"]);
+  assert.equal(ready.length, 0);
+  assert.match(invalidated[0].reason, /protect/);
+});

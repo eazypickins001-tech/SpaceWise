@@ -6,6 +6,7 @@
 // you were in, and on the desktop the answer was a menu you had to be told about.
 import type { T } from "../lib/i18n";
 import type { Choice } from "./Mobile";
+import { Icon } from "./Icon";
 import { Sheet } from "./Sheet";
 
 function Row<V extends string | number>(p: {
@@ -47,6 +48,11 @@ export interface DesktopSettingsProps<F extends string, M extends string, L exte
   levels: number;
   levelChoices: Choice<number>[];
   onLevels: (v: number) => void;
+  // Folders cleanup must never touch. The list lives in the main process; this
+  // only draws it and asks for changes.
+  protectedFolders: string[];
+  onAddProtected: () => void;
+  onRemoveProtected: (path: string) => void;
   onClose: () => void;
 }
 
@@ -65,6 +71,38 @@ export function DesktopSettings<F extends string, M extends string, L extends st
           <Row label={t("menu.mode")} value={p.mode} choices={p.modes} onPick={p.onMode} />
           <Row label={t("menu.language")} value={p.lang} choices={p.langs} onPick={p.onLang} />
           <Row label={t("menu.levels")} value={p.levels} choices={p.levelChoices} onPick={p.onLevels} />
+        </div>
+
+        <div className="set-section">
+          <div className="set-head">
+            <strong>{t("settings.protection")}</strong>
+            <span className="dim">{t("settings.protectionNote")}</span>
+          </div>
+          {p.protectedFolders.length === 0 ? (
+            <p className="dim">{t("settings.protectionNone")}</p>
+          ) : (
+            <ul className="set-paths">
+              {p.protectedFolders.map((path) => (
+                <li key={path}>
+                  <span className="set-path" title={path}>
+                    {path}
+                  </span>
+                  <button
+                    className="btn quiet icon"
+                    aria-label={t("settings.protectionRemove")}
+                    title={t("settings.protectionRemove")}
+                    onClick={() => p.onRemoveProtected(path)}
+                  >
+                    <Icon name="close" />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+          <button className="btn" onClick={p.onAddProtected}>
+            <Icon name="folder" />
+            {t("settings.protectionAdd")}
+          </button>
         </div>
       </div>
       <footer>

@@ -19,7 +19,7 @@
 //
 // The reaches below differ in one way: a folder that was scanned may be read,
 // revealed, and pasted into, but may not itself be deleted or moved.
-import { isInside, normalizePath, protectedPlace } from "../shared/cleanup";
+import { isInside, normalizePath, protectedPlace, userProtectedReason } from "../shared/cleanup";
 
 export type Reach =
   // The scanned root itself, or anything inside it: revealing, measuring,
@@ -32,10 +32,13 @@ export interface ScopeRequest {
   path: string;
   roots: ReadonlySet<string>;
   reach: Reach;
+  // Folders this person added to the list cleanup must never touch. Only ever
+  // consulted for a deletion; see the note in the body.
+  extraProtected?: readonly string[];
 }
 
 // Returns null when the path may be used, or a reason when it may not.
-export function refuseReason({ path, roots, reach }: ScopeRequest): string | null {
+export function refuseReason({ path, roots, reach, extraProtected }: ScopeRequest): string | null {
   const raw = String(path ?? "");
   if (raw === "") return "no path was given";
   if (raw.includes("*") || raw.includes("?")) return "a wildcard is not a path";
@@ -45,6 +48,14 @@ export function refuseReason({ path, roots, reach }: ScopeRequest): string | nul
 
   const guarded = protectedPlace(norm);
   if (guarded) return guarded;
+
+  // Only a deletion consults the person's own list. Scanning, opening, revealing
+  // and measuring a protected folder are all still allowed: the point is that
+  // cleanup cannot touch it, not that it becomes invisible in the application.
+  if (reach === "target" && extraProtected && extraProtected.length > 0) {
+    const mine = userProtectedReason(norm, extraProtected);
+    if (mine) return mine;
+  }
 
   const lower = norm.toLowerCase();
   let inside = false;

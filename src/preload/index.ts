@@ -77,6 +77,11 @@ const api = {
   onCleanupProgress: (cb: (progress: CleanupProgress) => void) => on("clean:progress", cb),
   cleanupHistory: (limit?: number): Promise<AuditRecord[]> => ipcRenderer.invoke("clean:history", limit),
 
+  // Folders this person protects from cleanup. Each call returns the new list.
+  protectedFolders: (): Promise<string[]> => ipcRenderer.invoke("protect:list"),
+  addProtectedFolder: (path: string): Promise<string[]> => ipcRenderer.invoke("protect:add", path),
+  removeProtectedFolder: (path: string): Promise<string[]> => ipcRenderer.invoke("protect:remove", path),
+
   licenseStatus: (): Promise<LicenseState> => ipcRenderer.invoke("lic:status"),
   activateLicense: (token: string): Promise<LicenseState> => ipcRenderer.invoke("lic:activate", token),
   clearLicense: (): Promise<LicenseState> => ipcRenderer.invoke("lic:clear"),

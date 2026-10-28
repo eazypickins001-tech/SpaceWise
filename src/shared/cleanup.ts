@@ -144,9 +144,31 @@ function isProtected(path: string): string | null {
   return protectedPlace(path);
 }
 
+// A folder the person has added to the list cleanup must never touch.
+//
+// Additive by construction: this can only produce a refusal, never remove one,
+// and the built-in list above is not consulted or edited here. It is a separate
+// function from `protectedPlace` for that reason, not an extension of it.
+export function userProtectedReason(path: string, extra: readonly string[]): string | null {
+  if (extra.length === 0) return null;
+  const norm = normalizePath(path);
+  const lower = norm.toLowerCase();
+  for (const raw of extra) {
+    const folder = normalizePath(raw);
+    if (folder === "") continue;
+    if (lower === folder.toLowerCase()) return `${norm} is a folder you protect from cleanup`;
+    if (isInside(folder, norm)) return `${norm} is inside a folder you protect from cleanup (${folder})`;
+  }
+  return null;
+}
+
 // Rule 2. Every path is validated against the scope it was found in, and against
 // the protected list, before it can enter a plan.
-export function validatePath(path: string, scope: string): { ok: true; path: string } | { ok: false; reason: string } {
+export function validatePath(
+  path: string,
+  scope: string,
+  extraProtected: readonly string[] = [],
+): { ok: true; path: string } | { ok: false; reason: string } {
   const norm = normalizePath(path);
   if (norm === "") return { ok: false, reason: "the path is empty after normalisation" };
   if (path.includes("*") || path.includes("?")) return { ok: false, reason: "a wildcard is not a target" };
@@ -161,6 +183,8 @@ export function validatePath(path: string, scope: string): { ok: true; path: str
   }
   const bad = isProtected(norm);
   if (bad) return { ok: false, reason: bad };
+  const mine = userProtectedReason(norm, extraProtected);
+  if (mine) return { ok: false, reason: mine };
   return { ok: true, path: norm };
 }
 
@@ -178,12 +202,13 @@ export function buildPlan(
   candidates: readonly Candidate[],
   action: Action,
   probe: FsProbe,
+  extraProtected: readonly string[] = [],
 ): CleanupPlan {
   const items: CleanupItem[] = [];
   const rejected: RejectedItem[] = [];
 
   for (const c of candidates) {
-    const check = validatePath(c.path, scope);
+    const check = validatePath(c.path, scope, extraProtected);
     if (!check.ok) {
       rejected.push({ path: c.path, reason: check.reason });
       continue;
@@ -268,12 +293,12 @@ export function changeReason(kind: ChangeKind): string {
   return "it could not be read";
 }
 
-export function revalidate(plan: CleanupPlan, probe: FsProbe): Revalidation {
+export function revalidate(plan: CleanupPlan, probe: FsProbe, extraProtected: readonly string[] = []): Revalidation {
   const ready: CleanupItem[] = [];
   const invalidated: RejectedItem[] = [];
 
   for (const item of plan.items) {
-    const check = validatePath(item.path, plan.scope);
+    const check = validatePath(item.path, plan.scope, extraProtected);
     if (!check.ok) {
       invalidated.push({ path: item.path, reason: check.reason });
       continue;

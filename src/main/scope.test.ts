@@ -92,3 +92,33 @@ describe("scope: the rule that survives a hostile renderer", () => {
     assert.equal(ask("C:\\Users\\me\\logins.json.bak", roots("C:\\Users\\me")), null);
   });
 });
+
+describe("scope: folders the person protects from cleanup", () => {
+  const set = roots("C:\\Users\\me");
+  const extra = ["C:\\Users\\me\\Project\\keep"];
+
+  it("refuses a deletion inside a folder the person protects", () => {
+    const reason = refuseReason({ path: "C:\\Users\\me\\Project\\keep\\a.bin", roots: set, reach: "target", extraProtected: extra });
+    assert.match(String(reason), /protect/);
+  });
+
+  it("refuses the protected folder itself as a deletion target", () => {
+    const reason = refuseReason({ path: "C:\\Users\\me\\Project\\keep", roots: set, reach: "target", extraProtected: extra });
+    assert.match(String(reason), /protect/);
+  });
+
+  it("still allows scanning, opening and measuring a protected folder", () => {
+    // The list is about deletion, not visibility: a folder you protect is still a
+    // folder you can look at.
+    assert.equal(refuseReason({ path: "C:\\Users\\me\\Project\\keep\\a.bin", roots: set, reach: "scan", extraProtected: extra }), null);
+  });
+
+  it("does not refuse anything outside the protected folder", () => {
+    assert.equal(refuseReason({ path: "C:\\Users\\me\\Project\\other\\a.bin", roots: set, reach: "target", extraProtected: extra }), null);
+  });
+
+  it("cannot be used to allow something the policy already refuses", () => {
+    const reason = refuseReason({ path: "C:\\Windows\\Temp\\x", roots: roots("C:\\Windows"), reach: "target", extraProtected: extra });
+    assert.match(String(reason), /operating system/);
+  });
+});
