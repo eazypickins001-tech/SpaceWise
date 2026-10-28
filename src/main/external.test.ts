@@ -35,6 +35,19 @@ test("refuses a file path or any other scheme", () => {
   }
 });
 
+test("opens a Windows settings page that is on the closed list", () => {
+  assert.equal(openableUrl("ms-settings:startupapps"), "ms-settings:startupapps");
+  assert.equal(openableUrl("MS-SETTINGS:storagesense"), "MS-SETTINGS:storagesense", "the scheme is case-insensitive");
+});
+
+test("refuses a settings page that is not on the list", () => {
+  // Not "any ms-settings: URI": an arbitrary page name is still a string the
+  // interface chose, so the list is matched exactly.
+  for (const bad of ["ms-settings:privacy", "ms-settings:startupapps;calc", "ms-settings:a b", "ms-settings:..\\x"]) {
+    assert.equal(openableUrl(bad), null, bad);
+  }
+});
+
 test("refuses nothing at all, rather than treating it as a location", () => {
   assert.equal(openableUrl(""), null);
   assert.equal(openableUrl("   "), null);

@@ -26,6 +26,9 @@ import type { Reach } from "./scope";
 import { openableUrl } from "./external";
 import { listDrives } from "./drives";
 import { addProtected, readProtected, removeProtected } from "./protection";
+import { readSlowFacts } from "./slow";
+import { diagnose } from "../shared/slow";
+import type { SlowFacts, SlowFinding } from "../shared/slow";
 import { fsProbe } from "./probe";
 import type { DirResult } from "./dirworker";
 import type {
@@ -244,6 +247,16 @@ ipcMain.handle("snap:save", (_e, reduced: Reduced) => {
 // The probing rule, and the reason each unreadable drive is listed rather than
 // dropped, live in drives.ts where a test can hold them to a fake filesystem.
 ipcMain.handle("drives:list", () => listDrives());
+
+// "Why is it slow?" -------------------------------------------------------
+//
+// Read-only, local, and with no claim about speed: the analysis is pure and
+// returns measured facts with the thresholds they crossed, and a reading that
+// could not be taken comes back as missing rather than as good news.
+ipcMain.handle("slow:check", async (): Promise<{ facts: SlowFacts; findings: SlowFinding[] }> => {
+  const facts = await readSlowFacts();
+  return { facts, findings: diagnose(facts) };
+});
 
 ipcMain.handle("dialog:pickFolder", async (e) => {
   const s = sessionOf(e);

@@ -25,6 +25,7 @@ import type {
 } from "../shared/types";
 import type { Action, AuditRecord, Candidate, CleanupPlan, CleanupProgress, CleanupRunResult } from "../shared/cleanup";
 import type { LicenseState } from "../shared/entitlements";
+import type { SlowFacts, SlowFinding } from "../shared/slow";
 
 // Main to renderer events return an unsubscribe function, for effect cleanup.
 function on<A extends unknown[]>(channel: string, cb: (...args: A) => void): () => void {
@@ -81,6 +82,10 @@ const api = {
   protectedFolders: (): Promise<string[]> => ipcRenderer.invoke("protect:list"),
   addProtectedFolder: (path: string): Promise<string[]> => ipcRenderer.invoke("protect:add", path),
   removeProtectedFolder: (path: string): Promise<string[]> => ipcRenderer.invoke("protect:remove", path),
+
+  // Read-only diagnosis. `facts` carries what could not be read, so the interface
+  // can say so rather than implying everything was checked.
+  slowCheck: (): Promise<{ facts: SlowFacts; findings: SlowFinding[] }> => ipcRenderer.invoke("slow:check"),
 
   licenseStatus: (): Promise<LicenseState> => ipcRenderer.invoke("lic:status"),
   activateLicense: (token: string): Promise<LicenseState> => ipcRenderer.invoke("lic:activate", token),
