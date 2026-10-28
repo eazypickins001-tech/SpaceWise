@@ -157,7 +157,11 @@ export const CleanupPane = memo(function CleanupPane(p: PaneProps & { onRemoved:
     void window.api.cancelCleanup();
   };
 
-  if (findings.length === 0) {
+  // A run that removes the last candidate still owes a report: it is the receipt for
+  // something irreversible. This used to return on an empty list whatever the step
+  // was, so a run that emptied the tab threw its own report away and left the person
+  // looking at "nothing to suggest" with no word of what had been freed.
+  if (findings.length === 0 && step.is === "idle") {
     return (
       <div className="pane">
         <div className="pane-empty">{t("cleanup.none")}</div>
@@ -175,7 +179,11 @@ export const CleanupPane = memo(function CleanupPane(p: PaneProps & { onRemoved:
         </div>
       ) : null}
       <div className="pane-note">
-        <strong>{t("cleanup.note", { bytes: fmt.bytes(total), count: fmt.count(findings.length) })}</strong>
+        {findings.length === 0 ? (
+          <strong>{t("cleanup.none")}</strong>
+        ) : (
+          <strong>{t("cleanup.note", { bytes: fmt.bytes(total), count: fmt.count(findings.length) })}</strong>
+        )}
       </div>
 
       <div className="pane-bar">
