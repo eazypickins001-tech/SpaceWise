@@ -128,18 +128,18 @@ the entitlement table already reserved for it; the Android erase contract was ch
 take the same guarded target the desktop path takes, so that build cannot be written without
 the recheck being available to it; the scan has now been measured on a two-million-file tree
 (9.5 to 17.2 s, with the folder-shape caveat recorded in `docs/TESTING.md`); `SITE` points at
-`https://dominixai.com`; and the first releases are published — `v0.1.0`, then `v0.1.1` with the two
-faults the driving checks found — which is what exposed the feed problem in the first item below.
+`https://dominixai.com`; the first releases are published — `v0.1.0`, then `v0.1.1` with the two
+faults the driving checks found; and publishing them exposed the next problem, which is now closed:
+the repository was private, so the application could not reach its own feed at all. It is public,
+and `npm run verify:feed` proves the feed is readable without credentials, that an older install is
+offered the published version, and that an install already on it is not offered it again.
 
-1. **Make the update feed reachable.** `v0.1.0` is published, and publishing it found the real
-   blocker: the repository is **private**, so an unauthenticated fetch of `latest.yml` returns 404
-   and the application — which carries no token — cannot see the feed at all. The options are to
-   make the repository public (it is MIT, and nothing secret lives in it), to serve a generic feed
-   from a Worker or R2, or to ship manual updates only. Until one is chosen, "Check for updates"
-   will keep reporting that there is nothing there.
-2. **Buy a code-signing certificate** and wire signing into the release job. Declined for now,
+1. **Buy a code-signing certificate** and wire signing into the release job. Declined for now,
    deliberately: the consequence is the SmartScreen warning on first run and nothing else is
-   blocked. It matters more the moment the update feed is used in anger — see `SECURITY.md`.
+   blocked. It matters more now that the update feed actually delivers, because the download is
+   checked by a hash published from the same place as the binary — integrity, not authenticity —
+   and because the installer an update runs is exactly the unsigned kind SmartScreen distrusts.
+   See `SECURITY.md`.
 
 ## Explicitly out of scope
 

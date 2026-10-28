@@ -10,6 +10,7 @@
     "dev": "electron-vite dev",
     "build": "electron-vite build",
     "smoke": "electron scripts/smoke.cjs",
+    "verify:feed": "electron scripts/verify-feed.cjs",
     "boot": "electron scripts/boot.cjs",
     "start": "electron-vite preview",
     "typecheck": "tsc --noEmit",

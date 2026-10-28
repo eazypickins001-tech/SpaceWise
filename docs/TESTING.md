@@ -8,6 +8,7 @@ npm run typecheck :: tsc --noEmit
 npm run build     :: electron-vite build, then required before the smoke test
 npm run smoke     :: loads the built interface and checks it actually works
 npm run boot      :: starts the built main process and checks a window opens
+npm run verify:feed :: the one check that needs the network: that the published release reaches an updater
 ```
 
 No test framework beyond Node's built-in runner and `node:assert`. There is no test
@@ -155,10 +156,13 @@ partly closed, it says so and says what is left.
   `scanworker`.** The folder the smoke test scans has no denied entries in it.
 - **The treemap is never painted.** Its layout arithmetic is measured and pinned by tests, but
   the paint itself needs a canvas and has no automated check at all.
-- **No clean-machine install, upgrade or uninstall test**, and nothing checks that an update
-  actually applies. `v0.1.1` is published, and `v0.1.0` before it, but the repository is private: a request for its
-  `latest.yml` without credentials returns 404, so the application cannot even reach the feed. No
-  updater path has therefore been exercised end to end.
+- **No clean-machine install, upgrade or uninstall test, and no update is ever downloaded and
+  applied.** `npm run verify:feed` covers the half that can be checked from a development machine:
+  it reads the config the package ships, fetches the feed as an anonymous client, requires that an
+  older install is offered the published version and that an install already on it is not offered
+  it again. That check needs the network, so it is deliberately not part of `npm test` or `npm run
+  smoke`. What nothing does is download the 107 MB installer, run it and restart, so everything
+  after the offer is unproven.
 - **No signed-build verification**, because there is no signing certificate. Signing is
   deliberately deferred, and the consequence is recorded in `SECURITY.md`.
 
