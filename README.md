@@ -79,7 +79,7 @@ npm run dev
 npm run typecheck    :: tsc --noEmit
 npm test             :: the test suite
 npm run build        :: production build into out/
-npm run smoke        :: loads the built interface, checks it runs, and opens and reads each sheet
+npm run smoke        :: runs the built interface: every sheet, then a real scan drawn in every tab
 npm run boot         :: starts the built main process and checks a window opens (needs a build first)
 npm run bench        :: measures the performance targets in docs/TESTING.md
 npm run dist         :: installer (NSIS) + portable exe into release/

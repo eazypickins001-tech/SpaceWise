@@ -19,6 +19,10 @@
 // The main process is not part of this harness, so those screens are fed a fixed
 // scripted answer, and what is asserted is what they draw from it.
 //
+// Then it does the same for the views, which need a finished scan: it starts one from
+// the drive row, answers it with a table the built worker really produced, and clicks
+// each tab. Nothing else in this file puts a scan in the window.
+//
 // It then probes what the policy actually governs, because the reason
 // `style-src 'unsafe-inline'` could be dropped is a claim worth testing rather
 // than restating:
@@ -190,9 +194,12 @@ const STUB = {
   ],
 };
 
-function stubChannels() {
+function stubChannels(win, fixture) {
   const answer = (channel, value) => ipcMain.handle(channel, () => value);
-  answer("drives:list", [STUB.drive]);
+  // The drive's path is the fixture, so the scan the window starts can be a real
+  // scan of a real folder. Its label stays a volume label, which is what the start
+  // screen draws.
+  answer("drives:list", [{ ...STUB.drive, path: fixture.dir }]);
   answer("app:info", { version: "0.0.0", platform: "win32", home: "C:\\smoke", build: STUB.build });
   answer("lic:status", { status: "none", plan: "free", pro: false, preservesUserData: true, payload: null, problem: null, daysLeft: null });
   answer("ai:status", { configured: false, baseUrl: "", model: "", hasKey: false, problem: null, unlocked: false });
@@ -201,6 +208,22 @@ function stubChannels() {
   answer("clean:history", []);
   answer("clip:get", null);
   answer("slow:check", { facts: STUB.facts, findings: STUB.findings });
+  answer("dup:cancel", undefined);
+  answer("dup:start", undefined);
+  answer("fs:measure", { ok: true, kind: "file", name: "measured", size: 1234, mtime: 0 });
+  answer("fs:stat", { ok: true, created: 0, modified: 0, accessed: 0, readOnly: false });
+
+  // A scan the window asks for is answered with the table the built worker really
+  // produced for the fixture. It arrives on the channel the main process uses, so
+  // the renderer takes the same path it takes in the application.
+  ipcMain.handle("scan:start", (_e, root) => {
+    if (String(root) !== fixture.dir) problems.push(`the window asked to scan "${root}", expected the fixture`);
+    setTimeout(() => {
+      if (fixture.table) win.webContents.send("scan:done", fixture.table, null);
+    }, 60);
+    return { ok: true, root: fixture.dir };
+  });
+
   // Answered for the same reason, and so that a screen asking for something this
   // harness does not stub shows up as a console error rather than being lost in a
   // list of noise nobody reads twice.
@@ -208,6 +231,110 @@ function stubChannels() {
   answer("win:setTitle", undefined);
   answer("win:list", []);
   answer("upd:check", undefined);
+}
+
+// The sheets above need no scan. Every other view does, and until this existed no
+// test had ever put one in the window, so the panes were drawn by nothing at all.
+// The scan here is a real one, run by the built worker over a folder whose shape is
+// known, and it is handed to the window the way the main process hands it over. The
+// folder is kept for the life of the run, because the rows the views draw are paths
+// that really exist.
+const VIEW_FIXTURE = {
+  big: 300_000,
+  small: 1_000,
+  text: 2_000,
+  bare: 500, // no extension, so the types view has a row for "no extension"
+  deep: 40_000,
+};
+
+async function makeFixture() {
+  const dir = mkdtempSync(path.join(tmpdir(), "spacewise-view-"));
+  mkdirSync(path.join(dir, "nested"), { recursive: true });
+  writeFileSync(path.join(dir, "big.bin"), Buffer.alloc(VIEW_FIXTURE.big));
+  writeFileSync(path.join(dir, "small.bin"), Buffer.alloc(VIEW_FIXTURE.small));
+  writeFileSync(path.join(dir, "notes.txt"), Buffer.alloc(VIEW_FIXTURE.text));
+  writeFileSync(path.join(dir, "README"), Buffer.alloc(VIEW_FIXTURE.bare));
+  writeFileSync(path.join(dir, "nested", "deep.bin"), Buffer.alloc(VIEW_FIXTURE.deep));
+  return { dir, table: await scanOnce(dir) };
+}
+
+// Each tab is clicked the way a person clicks it, then the pane beside the tab bar
+// is read. `wants` is a string or a pattern that has to be in that pane: the tab
+// label itself is stripped out first, so a label that happens to match cannot pass
+// the check on its own.
+async function checkViews(win, fixture) {
+  const notes = [];
+  const run = (script) => win.webContents.executeJavaScript(script);
+
+  // The scan is started from the drive row, which is the only way in.
+  const started = await run(`(() => {
+    const b = Array.from(document.querySelectorAll("button")).filter((e) => e.textContent.trim() === "Scan")[0];
+    if (!b) return false;
+    b.click();
+    return true;
+  })()`);
+  if (!started) {
+    problems.push("the start screen has no Scan button for the drive it was given");
+    return notes;
+  }
+
+  // It lands asynchronously, so wait for the tab bar rather than guessing a delay.
+  let labels = [];
+  for (let i = 0; i < 40 && labels.length === 0; i++) {
+    await sleep(200);
+    labels = await run(`Array.from(document.querySelectorAll('[role="tab"]')).map((b) => b.textContent.trim())`);
+  }
+
+  const expected = ["Tree", "Largest", "Types", "Clean up", "Duplicates", "Changes"];
+  if (labels.length === 0) {
+    problems.push("the scan finished and the window never showed a tab bar");
+    return notes;
+  }
+  if (labels.join(" | ") !== expected.join(" | ")) {
+    problems.push(`the tab bar reads "${labels.join(", ")}", expected "${expected.join(", ")}"`);
+  }
+  notes.push({ label: "after a real scan", detail: `the tab bar appeared with ${labels.length} tabs` });
+
+  const readPane = () =>
+    run(`(() => {
+      const aside = document.querySelector("aside.schedule");
+      if (!aside) return { pane: "", selected: "" };
+      const copy = aside.cloneNode(true);
+      const bar = copy.querySelector(".tabs");
+      if (bar) bar.remove();
+      const on = Array.from(document.querySelectorAll('[role="tab"]')).filter((b) => b.getAttribute("aria-selected") === "true")[0];
+      return { pane: copy.textContent || "", selected: on ? on.textContent.trim() : "" };
+    })()`);
+
+  const wanted = [
+    ["Tree", "big.bin"],
+    ["Largest", "largest files in this scan"],
+    ["Types", "no extension"],
+    ["Clean up", /Nothing to suggest for this scan|could be reclaimed/],
+    ["Duplicates", "identical content"],
+    ["Changes", "This view is part of Premium"],
+  ];
+
+  for (const [label, wants] of wanted) {
+    const clicked = await run(`(() => {
+      const b = Array.from(document.querySelectorAll('[role="tab"]')).filter((e) => e.textContent.trim() === ${JSON.stringify(label)})[0];
+      if (!b) return false;
+      b.click();
+      return true;
+    })()`);
+    if (!clicked) {
+      problems.push(`the tab bar has no "${label}" tab`);
+      continue;
+    }
+    await sleep(400);
+    const { pane, selected } = await readPane();
+    const drew = typeof wants === "string" ? pane.indexOf(wants) >= 0 : wants.test(pane);
+    if (selected !== label) problems.push(`the "${label}" tab did not become the selected one (it is "${selected}")`);
+    if (!drew) problems.push(`the "${label}" tab drew a pane with ${JSON.stringify(wants)} missing from it`);
+    notes.push({ label: `${label} tab`, detail: drew ? `drew its own content, ${pane.length} characters` : "drew the wrong pane" });
+  }
+
+  return notes;
 }
 
 // Each sheet is opened the way a person opens it — a row in a menu, or the button
@@ -372,10 +499,14 @@ app.on("window-all-closed", () => app.quit());
 app
   .whenReady()
   .then(async () => {
-    // The screens under test ask the main process for their content. Answer first,
-    // so what is read below is the screen drawing an answer rather than an error
-    // state that happens to look the same at a glance.
-    stubChannels();
+    // A real scan of a folder with a known shape, kept for the life of the run: the
+    // views below draw paths that have to exist on disk to be drawn at all.
+    let fixture = null;
+    try {
+      fixture = await makeFixture();
+    } catch (err) {
+      problems.push(`the fixture could not be scanned: ${err && err.message ? err.message : String(err)}`);
+    }
 
     const win = new BrowserWindow({
       show: false,
@@ -386,6 +517,12 @@ app
     win.webContents.on("console-message", (...args) => onConsole(args));
     win.webContents.on("render-process-gone", (_e, d) => problems.push(`the renderer process died: ${d.reason}`));
     win.webContents.on("preload-error", (_e, file, err) => problems.push(`the preload failed: ${file}: ${err.message}`));
+
+    // The screens under test ask the main process for their content. Answer before
+    // anything loads, so what is read below is a screen drawing an answer rather than
+    // an error state that happens to look the same at a glance. The window is needed
+    // for the one channel that answers by sending something back to it.
+    stubChannels(win, fixture || { dir: path.join(tmpdir(), "spacewise-no-fixture"), table: null });
 
     await win.loadFile(html);
     await sleep(1500); // let React mount and the first IPC round trip settle
@@ -452,6 +589,9 @@ app
     // The sheets, opened the way a person opens them and read for content.
     const sheets = await checkSheets(win);
 
+    // The tabs, after a scan the window itself asked for.
+    const views = fixture ? await checkViews(win, fixture) : [];
+
     // The production scan, on a real folder with a known answer.
     let scan = null;
     try {
@@ -490,6 +630,11 @@ app
     console.log("");
     console.log("  the interface past the start screen");
     for (const n of sheets) console.log("    " + n.label.padEnd(26) + n.detail);
+    if (views.length > 0) {
+      console.log("");
+      console.log("  the views, from a scan the window asked for");
+      for (const n of views) console.log("    " + n.label.padEnd(26) + n.detail);
+    }
     console.log("");
     console.log("  policy behaviour");
     console.log("    inline <style> element      " + (refusedStyleElement ? "refused (correct)" : "ALLOWED (unexpected)"));
@@ -501,6 +646,8 @@ app
       for (const m of reported.slice(0, 12)) console.log("    " + m.message.slice(0, 160));
     }
     console.log("");
+
+    if (fixture) rmSync(fixture.dir, { recursive: true, force: true });
 
     if (problems.length > 0) {
       console.error("SMOKE FAILED");
