@@ -276,6 +276,11 @@ Stated plainly, because finding out later is worse.
 - **Hard-linked files are counted once per name** in scan totals. This is standard for storage
   tools, and it makes folders such as `WinSxS` look larger than the space they uniquely occupy.
   The duplicates figure is not affected.
+- **A compressed or sparse file shows the space it takes, which can be nothing.** Windows can store
+  a file in fewer clusters than its length — or in none at all, for a hole or a fully compressed
+  file. SpaceWise reports what the drive says the file occupies, so a 12 MB text file on a
+  compressed volume can read as a few kilobytes or as 0 B, and a file occupying nothing does not
+  appear under Largest. That is the space it is using, not a measurement failure.
 - **The main paths are checked automatically; the rest of the interaction is not.** `npm run smoke`
   opens every sheet, scans a small fixture folder, clicks every tab, clicks a row and sends it to
   the Recycle Bin, ticks two rows and deletes them together, runs a duplicate search and removes one
