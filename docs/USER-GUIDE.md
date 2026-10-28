@@ -28,7 +28,7 @@ It works with no internet connection. Scanning, analysis and cleanup never need 
 
 ## Installing
 
-The installer is **`SpaceWise-Setup-0.1.0-x64.exe`** (about 107 MB). There is also a portable
+The installer is **`SpaceWise-Setup-0.1.1-x64.exe`** (about 107 MB). There is also a portable
 build that runs without installing anything, described below.
 
 1. Run the installer. It installs for **your account only**, so it does not need administrator
@@ -43,7 +43,7 @@ build that runs without installing anything, described below.
    — only run an installer you got from somewhere you trust.
 3. There is no licence to accept, no account to create, and nothing to sign in to.
 
-**The portable version** is `SpaceWise-0.1.0-x64.exe`. It needs no installation and leaves no
+**The portable version** is `SpaceWise-0.1.1-x64.exe`. It needs no installation and leaves no
 installer behind — useful for a USB stick or a machine you do not want to change. It also
 creates no shortcut and no Start Menu entry, because it does not install anything; if you want
 a shortcut, use the installer. Your settings

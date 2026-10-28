@@ -156,7 +156,7 @@ partly closed, it says so and says what is left.
 - **The treemap is never painted.** Its layout arithmetic is measured and pinned by tests, but
   the paint itself needs a canvas and has no automated check at all.
 - **No clean-machine install, upgrade or uninstall test**, and nothing checks that an update
-  actually applies. `v0.1.0` is now published, but the repository is private: a request for its
+  actually applies. `v0.1.1` is published, and `v0.1.0` before it, but the repository is private: a request for its
   `latest.yml` without credentials returns 404, so the application cannot even reach the feed. No
   updater path has therefore been exercised end to end.
 - **No signed-build verification**, because there is no signing certificate. Signing is

@@ -128,8 +128,8 @@ the entitlement table already reserved for it; the Android erase contract was ch
 take the same guarded target the desktop path takes, so that build cannot be written without
 the recheck being available to it; the scan has now been measured on a two-million-file tree
 (9.5 to 17.2 s, with the folder-shape caveat recorded in `docs/TESTING.md`); `SITE` points at
-`https://dominixai.com`; and the first release is published as `v0.1.0`, which is what exposed the
-feed problem in the first item below.
+`https://dominixai.com`; and the first releases are published — `v0.1.0`, then `v0.1.1` with the two
+faults the driving checks found — which is what exposed the feed problem in the first item below.
 
 1. **Make the update feed reachable.** `v0.1.0` is published, and publishing it found the real
    blocker: the repository is **private**, so an unauthenticated fetch of `latest.yml` returns 404

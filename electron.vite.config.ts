@@ -6,9 +6,9 @@ import type { Plugin } from "vite";
 
 // What this particular build is, stamped in at build time.
 //
-// The version number has read 0.1.0 through every change ever made to this
-// application, so "did my change make it into the copy I am running?" could not
-// be answered by looking at it. The About box now prints this, which answers it
+// The version number sat at 0.1.0 through every change made before the first
+// release, so "did my change make it into the copy I am running?" could not be
+// answered by looking at it. The About box now prints this, which answers it
 // in one glance and cannot drift, because it is taken from the commit that was
 // on disk when the bundle was built.
 function buildStamp(): string {
