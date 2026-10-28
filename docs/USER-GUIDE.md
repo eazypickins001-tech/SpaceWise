@@ -144,6 +144,33 @@ scans is a paid feature (see below); the saved history itself is free.
 
 ---
 
+## Why is it slow?
+
+If the computer feels slow, the opening screen has a button for it. It reads six things and tells
+you what it found. It changes nothing, and it never reports something it could not measure.
+
+1. Open SpaceWise. On the opening screen, next to **Scan a folder…**, click **Why is it slow?**
+2. Read the list. It is ordered worst first, and each line says how much weight to give it:
+   **Most important**, **Worth a look**, or **For information**.
+3. Use the button on a line if it has one. **Look at the largest files** takes you to the files
+   using the space. **Open Windows Settings** opens the Windows screen that owns that fix.
+4. Read the bottom line. Anything that could not be read is named there, with the reason Windows
+   gave — a reading that failed is never counted as a pass.
+
+**What it reads.** How full the system drive is. How much memory is committed, against what the
+system can commit. Whether a disk reports itself healthy, plus its wear and error counters. How
+long disk transfers are taking. What Windows measured the last start-up at. How many items start
+when you sign in.
+
+**What it will not do.** It does not stop a service, disable a start-up item, end a program, change
+the registry or clean anything, and it gives your PC no score. It will never tell you it made the
+machine faster.
+
+Some of these readings need administrator rights. If Windows refuses, that is exactly what the
+bottom of the list says.
+
+---
+
 ## The optional written summary
 
 There is one feature that can talk to something outside your computer, and it is **off until you

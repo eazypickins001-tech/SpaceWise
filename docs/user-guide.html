@@ -99,6 +99,7 @@
     <li><a href="#keys">Keyboard shortcuts</a></li>
     <li><a href="#paid">Free and paid</a></li>
     <li><a href="#data">Where your information lives</a></li>
+    <li><a href="#slow">Why is it slow?</a></li>
     <li><a href="#help">If something goes wrong</a></li>
     <li><a href="#uninstall">Removing it</a></li>
     <li><a href="#limits">Things worth knowing</a></li>
@@ -438,7 +439,40 @@ beside your findings, and there is no path from that text to an action.</p>
 <p>Delete that folder and SpaceWise forgets everything — it will not touch your actual files.
 Nothing here is uploaded anywhere. There is no account, no telemetry and no analytics.</p>
 
-<h2 id="help">13. If something goes wrong</h2>
+<h2 id="slow">13. Why is it slow?</h2>
+
+<p>If the computer feels slow, SpaceWise can read six things about it and tell you what it found.
+It changes nothing, and it never reports something it could not measure.</p>
+
+<ol class="steps">
+  <li>Open SpaceWise. On the opening screen, next to <strong>Scan a folder…</strong>, click
+      <strong>Why is it slow?</strong></li>
+  <li>Read the list. It is ordered worst first, and each line says how much weight to give it:
+      <strong>Most important</strong>, <strong>Worth a look</strong>, or
+      <strong>For information</strong>.</li>
+  <li>Use the button on a line if it has one. <strong>Look at the largest files</strong> takes you
+      to the files using the space. <strong>Open Windows Settings</strong> opens the Windows screen
+      that owns that fix — nothing is changed from here.</li>
+  <li>Read the bottom line. Anything that could not be read is named there, with the reason
+      Windows gave.</li>
+</ol>
+
+<h3>What it reads</h3>
+
+<p>How full the system drive is. How much memory is committed, against what the system can commit.
+Whether a disk reports itself healthy, plus its wear and error counters. How long disk transfers
+are taking. What Windows measured the last start-up at. How many items start when you sign in.</p>
+
+<div class="note">
+  <p><strong>It will not speed your PC up, and it does not claim to.</strong> It does not stop a
+  service, disable a start-up item, end a program, change the registry or clean anything. There is
+  no score, and nothing is changed from this sheet.</p>
+</div>
+
+<p>Some of these readings need administrator rights. If Windows refuses, that is exactly what the
+bottom of the list says — a reading that failed is never counted as a pass.</p>
+
+<h2 id="help">14. If something goes wrong</h2>
 
 <table>
   <tr><th>What you see</th><th>What it means</th></tr>
@@ -489,7 +523,7 @@ Nothing here is uploaded anywhere. There is no account, no telemetry and no anal
       before you stopped.</li>
 </ul>
 
-<h2 id="uninstall">14. Removing it</h2>
+<h2 id="uninstall">15. Removing it</h2>
 
 <ol class="steps">
   <li>Open <strong>Settings</strong> and go to <strong>Apps → Installed apps</strong>.</li>
@@ -502,7 +536,7 @@ Nothing here is uploaded anywhere. There is no account, no telemetry and no anal
 behind</strong>, so a reinstall picks up where you left off. To remove those too, delete
 <code>%APPDATA%\SpaceWise</code> yourself.</p>
 
-<h2 id="limits">15. Things worth knowing</h2>
+<h2 id="limits">16. Things worth knowing</h2>
 
 <p>Stated plainly, because finding out later is worse.</p>
 
