@@ -40,3 +40,7 @@ credentials*
 # Local scratch
 _tmp/
 scratch/
+
+# electron-vite compiles this config to a temporary file beside it while it
+# builds, and does not always clean it up. It is never part of the source.
+electron.vite.config.*.mjs
