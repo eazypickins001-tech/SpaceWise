@@ -177,11 +177,11 @@ Last run: 4 logical CPUs, Node v22.17.0, warm cache.
 | Finalise a 2,000,000-node table | — | 998 ms | |
 | Memory at 2,000,000 nodes | under 400 MB RSS | 294 MB | met |
 | Cancel a running scan, thread retired | within 4 s | 207 ms and 369 ms on two runs | met |
-| A multi-million-file volume | tens of seconds | **not measured** | needs a volume that size |
+| A multi-million-file volume | tens of seconds | **9.5–17.2 s** over **2,000,000 files in 10,111 folders** — walk 17.2 s, with the live preview 13.8 s, with the history snapshot 9.5 s | met, with the fourth caveat |
 | Treemap paint | under 16 ms | **not measured** | needs a canvas; the figure above is the layout arithmetic only |
 | Cancel acknowledged on screen | ~200 ms | **not measured** | that half is about the interface, not the scanner |
 
-Three caveats, because without them these numbers read as more than they are:
+Four caveats, because without them these numbers read as more than they are:
 
 - **They move with the machine.** Two runs while other work was going on gave 148 ms and
   378 ms for the same walk of the same folder, and the 100k figure fell anywhere between
@@ -191,6 +191,12 @@ Three caveats, because without them these numbers read as more than they are:
   so its wall clock should be better than these figures and never worse. Treat them as a floor.
 - 11,072 files is not 100,000. That row is the measured rate extended, not a measurement, and
   the bench script labels it that way in its own output.
+- **The two-million-file figure comes from a synthetic tree, not a real volume.** It was 200 files
+  in each of 10,000 folders, written on this machine minutes before it was scanned, so the metadata
+  was already in cache. That shape flatters the bulk lister, which reads a whole folder per call. The
+  same lister walked a real project folder at 29,283 files/s, which across two million files would be
+  about 68 s. The truth for a real volume lies between the two figures, and it is the **folder
+  shape**, not the file count, that decides which end — many small folders is the slow end.
 
 Cancel latency is the one target that needs the built scanner rather than the library, so the
 benchmark starts the built coordinator, asks it to cancel as soon as it says anything at all,

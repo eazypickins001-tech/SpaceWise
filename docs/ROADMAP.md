@@ -124,20 +124,18 @@ closed apart from the copy-source residual in `docs/SECURITY.md`; the cleanup hi
 its stored refusal reasons; duplicate detection has planted-file tests and reports what it
 would really free; the treemap layout is tested; the walk has been extracted and is tested
 against a fake disk and a real one; the optional storage summary is built, in the shape
-the entitlement table already reserved for it; and the Android erase contract was changed to
+the entitlement table already reserved for it; the Android erase contract was changed to
 take the same guarded target the desktop path takes, so that build cannot be written without
-the recheck being available to it.
+the recheck being available to it; and the scan has now been measured on a two-million-file tree
+(9.5 to 17.2 s, with the folder-shape caveat recorded in `docs/TESTING.md`).
 
-1. **Measure a multi-million-file volume.** Every other target in `docs/TESTING.md` now has a
-   measured value, including cancel latency. This one needs a volume of that size, which this
-   machine does not have, and it is the only claim left that rests on an extrapolation.
-2. **Publish the first release.** The feed is wired and `app-update.yml` ships inside the
+1. **Publish the first release.** The feed is wired and `app-update.yml` ships inside the
    package, but the repository has no releases yet, so a version check reaches GitHub and finds
    nothing. Until one exists the updater is correct but unexercised end to end.
-3. **Buy a code-signing certificate** and wire signing into the release job. Declined for now,
+2. **Buy a code-signing certificate** and wire signing into the release job. Declined for now,
    deliberately: the consequence is the SmartScreen warning on first run and nothing else is
    blocked. It matters more the moment the update feed is used in anger — see `SECURITY.md`.
-4. Give `SITE` in `App.tsx` its real value. It is a placeholder for now, and the Help entry is
+3. Give `SITE` in `App.tsx` its real value. It is a placeholder for now, and the Help entry is
    drawn only once it holds an address, so nothing is inert in the meantime. `REPO` and the
    contact address in `CONTACT` are set, so the Source and contact entries work as they are.
 
