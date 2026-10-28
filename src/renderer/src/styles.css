@@ -1287,6 +1287,73 @@ dialog.wide {
   font-size: 13.5px;
 }
 
+/* Why is it slow? ------------------------------------------------------- */
+.slow-working {
+  padding: 18px 0;
+  color: var(--ink-2);
+}
+.slow-list {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.slow-row {
+  display: flex;
+  gap: 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--line);
+}
+.slow-row:last-child {
+  border-bottom: 0;
+}
+/* A mark as well as a colour: the severity is never carried by colour alone. */
+.slow-dot {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  margin-top: 6px;
+  border: 1px solid var(--ink);
+}
+.slow-dot.high {
+  background: var(--red);
+  border-color: var(--red);
+}
+.slow-dot.medium {
+  background: repeating-linear-gradient(-45deg, var(--ink) 0 2px, transparent 2px 4px);
+}
+.slow-what {
+  min-width: 0;
+}
+.slow-what p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.slow-sev {
+  display: inline-block;
+  margin-right: 8px;
+  padding: 0 5px;
+  border: 1px solid var(--line-strong);
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+  white-space: nowrap;
+}
+.slow-what .btn {
+  margin-top: 8px;
+  padding-left: 0;
+}
+.slow-missing {
+  margin: 16px 0 0;
+  padding-left: 18px;
+  color: var(--ink-2);
+  font-size: 12.5px;
+  overflow-wrap: anywhere;
+}
+
 /* Floating things ------------------------------------------------------- */
 
 .tip {

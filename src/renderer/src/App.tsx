@@ -17,6 +17,7 @@ import { TreeView } from "./components/TreeView";
 import { ChangesPane, DupesPane, ListPane, TypesPane } from "./components/Panels";
 import { CleanupPane } from "./components/Cleanup";
 import { DesktopSettings } from "./components/Settings";
+import { SlowSheet } from "./components/Slow";
 import { LicenseDialog, PremiumGate } from "./components/License";
 import { NO_LICENSE, hasFeature } from "../../shared/entitlements";
 import type { LicenseState } from "../../shared/entitlements";
@@ -138,7 +139,7 @@ export function App() {
   const [propsOf, setPropsOf] = useState<number | null>(null);
   const [itemStat, setItemStat] = useState<ItemStat | null>(null);
   const [trash, setTrash] = useState<number[] | null>(null);
-  const [dialog, setDialog] = useState<"issues" | "about" | "keys" | "licence" | "settings" | null>(null);
+  const [dialog, setDialog] = useState<"issues" | "about" | "keys" | "licence" | "settings" | "slow" | null>(null);
   const [notice, setNotice] = useState<{ text: string; bad?: boolean; progress?: number; action?: { label: string; run: () => void } } | null>(null);
   const [stopping, setStopping] = useState(false);
   // What the scan is measured against for a percentage: the drive's used
@@ -1399,7 +1400,15 @@ export function App() {
       )}
 
       {phase.is === "start" && (
-        <StartSheet drives={drives} access={access} t={t} fmt={fmt} onScan={startScan} onPick={pickFolder} />
+        <StartSheet
+          drives={drives}
+          access={access}
+          t={t}
+          fmt={fmt}
+          onScan={startScan}
+          onPick={pickFolder}
+          onSlow={() => setDialog("slow")}
+        />
       )}
 
       {((phase.is === "scanning" && !live) || phase.is === "failed") && (
@@ -1996,6 +2005,19 @@ export function App() {
         />
       )}
 
+      {dialog === "slow" && (
+        <SlowSheet
+          t={t}
+          fmt={fmt}
+          hasScan={ready}
+          onClose={() => setDialog(null)}
+          onLargest={() => {
+            setDialog(null);
+            setTab("largest");
+          }}
+        />
+      )}
+
       {dialog === "about" && (
         <Dialog onClose={() => setDialog(null)}>
           <div className="body" style={{ paddingTop: 16 }}>
@@ -2111,6 +2133,7 @@ function StartSheet(p: {
   fmt: Fmt;
   onScan: (root: string) => void;
   onPick: () => void;
+  onSlow: () => void;
 }) {
   const { t, fmt } = p;
   if (!p.access)
@@ -2206,6 +2229,9 @@ function StartSheet(p: {
           <button className="btn" onClick={p.onPick}>
             <Icon name="folder" />
             {t("start.folder")}
+          </button>
+          <button className="btn quiet" onClick={p.onSlow}>
+            {t("slow.title")}
           </button>
           {can.drop && <span>{t("start.drop")}</span>}
         </div>
