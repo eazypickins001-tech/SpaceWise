@@ -23,6 +23,10 @@
 // the drive row, answers it with a table the built worker really produced, and clicks
 // each tab. Nothing else in this file puts a scan in the window.
 //
+// Then it uses the window rather than looking at it: a row is clicked and sent to the
+// Recycle Bin, and two rows are ticked and sent together, with both outcomes checked
+// against the disk and the panes that drew them.
+//
 // It then probes what the policy actually governs, because the reason
 // `style-src 'unsafe-inline'` could be dropped is a claim worth testing rather
 // than restating:
@@ -40,7 +44,7 @@
 // otherwise passes everything.
 //
 //   npm run build && npm run smoke
-const { app, BrowserWindow, ipcMain } = require("electron");
+const { app, BrowserWindow, ipcMain, shell } = require("electron");
 const { spawnSync } = require("node:child_process");
 const { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } = require("node:fs");
 const { tmpdir } = require("node:os");
@@ -224,6 +228,24 @@ function stubChannels(win, fixture) {
     return { ok: true, root: fixture.dir };
   });
 
+  // Deleting is answered with the same call the main process makes, so a file that
+  // the interface says it removed really is out of the way, and the Recycle Bin
+  // holds it afterwards. What is not copied here is main's own guard — the
+  // protection list and the "has this file changed since the scan" recheck — which
+  // has its own tests against the real code.
+  ipcMain.handle("shell:trash", async (_e, targets) => {
+    const out = [];
+    for (const t of targets ?? []) {
+      try {
+        await shell.trashItem(String(t?.path ?? ""));
+        out.push({ path: t.path, ok: true });
+      } catch (err) {
+        out.push({ path: t?.path, ok: false, error: String((err && err.message) || err) });
+      }
+    }
+    return out;
+  });
+
   // Answered for the same reason, and so that a screen asking for something this
   // harness does not stub shows up as a console error rather than being lost in a
   // list of noise nobody reads twice.
@@ -247,6 +269,10 @@ const VIEW_FIXTURE = {
   deep: 40_000,
 };
 
+// The files the interaction pass sends to the Recycle Bin. Named once here, so the
+// fixture, the assertions and the report cannot drift apart.
+const DOOMED = ["doomed-one.bin", "doomed-two.bin", "doomed-three.bin"];
+
 async function makeFixture() {
   const dir = mkdtempSync(path.join(tmpdir(), "spacewise-view-"));
   mkdirSync(path.join(dir, "nested"), { recursive: true });
@@ -255,6 +281,7 @@ async function makeFixture() {
   writeFileSync(path.join(dir, "notes.txt"), Buffer.alloc(VIEW_FIXTURE.text));
   writeFileSync(path.join(dir, "README"), Buffer.alloc(VIEW_FIXTURE.bare));
   writeFileSync(path.join(dir, "nested", "deep.bin"), Buffer.alloc(VIEW_FIXTURE.deep));
+  DOOMED.forEach((name, i) => writeFileSync(path.join(dir, name), Buffer.alloc((i + 1) * 1_000)));
   return { dir, table: await scanOnce(dir) };
 }
 
@@ -494,6 +521,197 @@ async function checkSheets(win) {
   return notes;
 }
 
+// The views above only have to draw. This part uses them: a row is clicked and sent
+// to the Recycle Bin, and then two rows are ticked and sent together. The deletion is
+// real — the harness answers `shell:trash` with the same Electron call the main
+// process makes — so what is asserted is that the files left the disk, not that some
+// call was made.
+async function checkInteraction(win, fixture) {
+  const notes = [];
+  const run = (script) => win.webContents.executeJavaScript(script);
+  const onDisk = (name) => existsSync(path.join(fixture.dir, name));
+
+  const showTab = async (label) => {
+    const found = await run(`(() => {
+      const b = Array.from(document.querySelectorAll('[role="tab"]')).filter((e) => e.textContent.trim() === ${JSON.stringify(label)})[0];
+      if (!b) return false;
+      b.click();
+      return true;
+    })()`);
+    await sleep(350);
+    return found;
+  };
+
+  const clickRow = (name) =>
+    run(`(() => {
+      const row = Array.from(document.querySelectorAll(".trow")).filter((r) => (r.textContent || "").indexOf(${JSON.stringify(name)}) >= 0)[0];
+      if (!row) return false;
+      row.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true }));
+      return true;
+    })()`);
+
+  // Delete is the key the row list itself owns, so it is pressed on the grid that
+  // holds the rows rather than on the window.
+  const pressDelete = () =>
+    run(`(() => {
+      const grid = document.querySelector(".rows");
+      if (!grid) return false;
+      grid.focus();
+      grid.dispatchEvent(new KeyboardEvent("keydown", { key: "Delete", bubbles: true, cancelable: true }));
+      return true;
+    })()`);
+
+  const dialog = () =>
+    run(`(() => {
+      const d = Array.from(document.querySelectorAll("dialog")).filter((x) => x.open)[0];
+      if (!d) return { open: false, title: "", text: "" };
+      const h = d.querySelector("h2");
+      return { open: true, title: h ? h.textContent.trim() : "", text: d.textContent || "" };
+    })()`);
+
+  const pressIn = (scope, label) =>
+    run(`(() => {
+      const root = ${scope};
+      if (!root) return false;
+      const b = Array.from(root.querySelectorAll("button")).filter((e) => e.textContent.trim() === ${JSON.stringify(label)})[0];
+      if (!b) return false;
+      b.click();
+      return true;
+    })()`);
+
+  // What the pane on screen is showing, by row. The tree and the lists draw their
+  // rows the same way, so one reader serves both. A failure here names the rows it
+  // saw rather than only the one it wanted, because "the row is still there" is a
+  // claim about the whole list.
+  const paneRows = () =>
+    run(`Array.from(document.querySelectorAll(".trow")).map((r) => {
+      const cell = r.querySelector(".cell-name");
+      return (cell ? cell.textContent : "").trim();
+    })`);
+
+  const waitGone = async (name) => {
+    for (let i = 0; i < 30 && onDisk(name); i++) await sleep(100);
+    return !onDisk(name);
+  };
+
+  // 1. Click a row. 2. Press Delete, then cancel: nothing may move.
+  if (!(await showTab("Tree"))) problems.push("the interaction pass found no Tree tab");
+  const clicked = await clickRow(DOOMED[0]);
+  if (!clicked) problems.push("the tree has no row for a file the fixture wrote");
+  else {
+    const selected = await run(`(() => {
+      const on = Array.from(document.querySelectorAll('.trow[aria-selected="true"]'));
+      return on.length === 1 ? on[0].textContent.trim() : "";
+    })()`);
+    if (selected.indexOf(DOOMED[0]) < 0) problems.push(`clicking the row for ${DOOMED[0]} selected "${selected}"`);
+    else notes.push({ label: "click a row", detail: `selected ${DOOMED[0]}` });
+
+    await pressDelete();
+    await sleep(400);
+    const asked = await dialog();
+    if (!asked.open) problems.push("Delete on a selected file asked nothing");
+    else {
+      if (asked.title !== "Send to the Recycle Bin?") problems.push(`the confirmation is titled "${asked.title}"`);
+      if (asked.text.indexOf(DOOMED[0]) < 0) problems.push("the confirmation does not name the file it is about to send");
+      else notes.push({ label: "Delete on a row", detail: "asked, and named the file" });
+
+      if (!(await pressIn(`Array.from(document.querySelectorAll("dialog")).filter((x) => x.open)[0]`, "Cancel"))) {
+        problems.push("the confirmation has no Cancel button");
+      }
+      await sleep(300);
+      if (!onDisk(DOOMED[0])) problems.push(`Cancel sent ${DOOMED[0]} to the Recycle Bin anyway`);
+      else notes.push({ label: "Cancel", detail: "left the file where it was" });
+    }
+  }
+
+  // 3. The same again, confirmed: the file has to leave the disk.
+  await clickRow(DOOMED[0]);
+  await pressDelete();
+  await sleep(400);
+  const confirm = await dialog();
+  if (!confirm.open) problems.push("Delete asked nothing the second time");
+  else {
+    const confirmed = await pressIn(`Array.from(document.querySelectorAll("dialog")).filter((x) => x.open)[0]`, "Send to Recycle Bin");
+    if (!confirmed) problems.push("the confirmation has no button to send the file");
+    const gone = await waitGone(DOOMED[0]);
+    if (!gone) problems.push(`${DOOMED[0]} is still on disk after the confirmation`);
+    else {
+      // The file leaves the disk a moment before the call that asked for it comes
+      // back to the renderer, so the row is given time to go rather than read once.
+      let rows = await paneRows();
+      for (let i = 0; i < 20 && rows.some((name) => name.indexOf(DOOMED[0]) >= 0); i++) {
+        await sleep(100);
+        rows = await paneRows();
+      }
+      if (rows.some((name) => name.indexOf(DOOMED[0]) >= 0)) {
+        problems.push(`${DOOMED[0]} left the disk but the tree still lists it two seconds later: ${JSON.stringify(rows)}`);
+      } else {
+        notes.push({ label: "Confirm", detail: `${DOOMED[0]} left the disk and the tree` });
+      }
+    }
+  }
+
+  // 4. Two rows ticked, then the pane's own Delete button: both have to go.
+  if (!(await showTab("Largest"))) problems.push("the interaction pass found no Largest tab");
+  const ticked = await run(`(() => {
+    const want = ${JSON.stringify([DOOMED[1], DOOMED[2]])};
+    const boxes = Array.from(document.querySelectorAll('input[type="checkbox"]'));
+    let n = 0;
+    for (const name of want) {
+      const b = boxes.filter((e) => e.getAttribute("aria-label") === name)[0];
+      if (!b) continue;
+      b.click();
+      n++;
+    }
+    return n;
+  })()`);
+  if (ticked !== 2) problems.push(`only ${ticked} of the two files could be ticked in the largest list`);
+  else {
+    await sleep(250);
+    const bar = await run(`(() => {
+      const pane = document.querySelector("aside.schedule .pane");
+      if (!pane) return null;
+      const el = pane.querySelector(".pane-bar");
+      const del = Array.from(pane.querySelectorAll(".pane-bar button")).filter((e) => e.textContent.trim() === "Send to Recycle Bin")[0];
+      return { text: el ? el.textContent : "", disabled: del ? del.disabled : null };
+    })()`);
+    if (!bar) problems.push("the largest list drew no pane bar");
+    else {
+      if (bar.text.indexOf("Selected: 2") < 0) problems.push(`the pane bar reads "${bar.text}", expected two files selected`);
+      if (bar.disabled !== false) problems.push("the pane's Delete button is still disabled with two files ticked");
+      notes.push({ label: "tick two rows", detail: bar.text.indexOf("Selected: 2") >= 0 ? "the bar reported two selected" : "the bar reported something else" });
+
+      const sent = await pressIn(`document.querySelector("aside.schedule .pane")`, "Send to Recycle Bin");
+      if (!sent) problems.push("the pane's Delete button could not be pressed");
+      await sleep(400);
+      const many = await dialog();
+      if (!many.open) problems.push("the pane's Delete asked nothing");
+      else {
+        if (many.text.indexOf("2 items") < 0) problems.push(`the confirmation reads "${many.text}", expected two items`);
+        await pressIn(`Array.from(document.querySelectorAll("dialog")).filter((x) => x.open)[0]`, "Send to Recycle Bin");
+        const both = (await waitGone(DOOMED[1])) && (await waitGone(DOOMED[2]));
+        if (!both) problems.push(`after a bulk delete, ${DOOMED.filter(onDisk).join(" and ")} are still on disk`);
+        else {
+          // The list the rows were ticked in has to lose both of them as well.
+          const stillListed = async () => {
+            const rows = await paneRows();
+            return DOOMED.filter((name) => rows.some((row) => row.indexOf(name) >= 0));
+          };
+          let left = await stillListed();
+          for (let i = 0; i < 20 && left.length > 0; i++) {
+            await sleep(100);
+            left = await stillListed();
+          }
+          if (left.length > 0) problems.push(`the largest list still shows ${left.join(" and ")} after a bulk delete`);
+          else notes.push({ label: "delete two at once", detail: `${DOOMED[1]} and ${DOOMED[2]} left the disk and the list` });
+        }
+      }
+    }
+  }
+
+  return notes;
+}
+
 app.on("window-all-closed", () => app.quit());
 
 app
@@ -592,6 +810,9 @@ app
     // The tabs, after a scan the window itself asked for.
     const views = fixture ? await checkViews(win, fixture) : [];
 
+    // Then the same window is used: rows are clicked, ticked and deleted for real.
+    const moves = fixture ? await checkInteraction(win, fixture) : [];
+
     // The production scan, on a real folder with a known answer.
     let scan = null;
     try {
@@ -634,6 +855,11 @@ app
       console.log("");
       console.log("  the views, from a scan the window asked for");
       for (const n of views) console.log("    " + n.label.padEnd(26) + n.detail);
+    }
+    if (moves.length > 0) {
+      console.log("");
+      console.log("  clicking and deleting for real");
+      for (const n of moves) console.log("    " + n.label.padEnd(26) + n.detail);
     }
     console.log("");
     console.log("  policy behaviour");

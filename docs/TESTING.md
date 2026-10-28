@@ -47,6 +47,15 @@ real preload and the real Content Security Policy, then fails if
   process is not part of the harness, so these screens are answered from a fixed script; the live
   answer is exercised by `npm run bench` instead. Before any of this existed, a section that quietly
   stopped rendering passed every check in this file.
+- the **rows work when they are used**. It then clicks a row in the tree, presses Delete, reads the
+  confirmation — it has to name the file — and cancels, and the file must still be there. It does the
+  same again and confirms, and the file has to leave the disk *and* the tree. Then it ticks two rows
+  in the largest list, checks the pane bar says two are selected, presses the pane's own Delete,
+  expects a confirmation about two items, and requires both files to leave the disk and the list.
+  The deletion is real: the harness answers `shell:trash` with the same Electron call the main
+  process makes, so what is asserted is that the files are gone, not that a call was made. It was
+  falsified before it was trusted: with the view left un-refreshed while the file still left the
+  disk, both assertions fail and name the rows that were left behind.
 - the **application does not start**. It also starts the built main process in a child and fails
   if it throws while loading or never opens a window. Nothing else loads `out/main/index.js`, so
   a main process that dies before `app.whenReady()` used to pass the entire suite; a duplicated
@@ -115,11 +124,12 @@ Highlights worth knowing about:
 This list is the honest gap: what no test reaches today. Where something on it has since been
 partly closed, it says so and says what is left.
 
-- **Nothing interacts with the views.** A scan now reaches the window and every tab has to draw its
-  own content, but nothing in a test selects a row, deletes a file, reviews a cleanup, starts a
-  duplicate search or opens a context menu *through the interface*: those paths are covered by unit
-  tests over their pure parts and by nothing else. A component that throws once a row is clicked, or
-  once a dialog opens over real scan data, would still ship unnoticed.
+- **The rest of the interaction is still not driven.** Rows are now clicked, ticked and deleted for
+  real, which moved files in the Recycle Bin to prove it, but nothing in a test reviews a cleanup,
+  starts a duplicate search, opens a context menu, drags a folder in, or walks the rows with the
+  arrow keys and the file clipboard: those paths are covered by unit tests over their pure parts and
+  by nothing else. A component that throws once *those* open over real scan data would still ship
+  unnoticed.
 - **No test picks a folder or drags one in.** The Scan button on a drive row is now clicked (`npm
   run smoke`), but the "Scan a folder…" dialog, a folder dropped on the window and the unreadable
   rows of the drive list are untested end to end; every other test starts a scan by calling the
