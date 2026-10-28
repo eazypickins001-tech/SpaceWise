@@ -46,7 +46,8 @@
 //   npm run build && npm run smoke
 const { app, BrowserWindow, ipcMain, shell } = require("electron");
 const { spawnSync } = require("node:child_process");
-const { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } = require("node:fs");
+const { createHash } = require("node:crypto");
+const { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } = require("node:fs");
 const { tmpdir } = require("node:os");
 const { Worker } = require("node:worker_threads");
 const path = require("node:path");
@@ -213,7 +214,6 @@ function stubChannels(win, fixture) {
   answer("clip:get", null);
   answer("slow:check", { facts: STUB.facts, findings: STUB.findings });
   answer("dup:cancel", undefined);
-  answer("dup:start", undefined);
   answer("fs:measure", { ok: true, kind: "file", name: "measured", size: 1234, mtime: 0 });
   answer("fs:stat", { ok: true, created: 0, modified: 0, accessed: 0, readOnly: false });
 
@@ -246,6 +246,106 @@ function stubChannels(win, fixture) {
     return out;
   });
 
+  // A duplicate search, answered from the files that are really on disk: the same
+  // size first, then the same bytes read back. The product hashes them in the main
+  // process instead — a partial hash and then a full one, which is what makes a
+  // large disk bearable — and that code has its own tests. What is derived here is a
+  // group that is true of this fixture, including the negative case: `twin-odd.bin`
+  // is exactly as long as the twins and is deliberately not reported as a copy.
+  ipcMain.handle("dup:start", (_e, candidates) => {
+    const groups = [];
+    let done = 0;
+    let bytes = 0;
+    let totalBytes = 0;
+    for (const c of candidates ?? []) {
+      const paths = (c.paths ?? []).map(String);
+      const ids = c.ids ?? [];
+      totalBytes += Number(c.size) * paths.length;
+      const byContent = new Map();
+      paths.forEach((p, i) => {
+        let key;
+        try {
+          key = createHash("sha256").update(readFileSync(p)).digest("hex");
+          done++;
+          bytes += Number(c.size);
+        } catch {
+          key = `unreadable:${i}`;
+        }
+        const at = byContent.get(key);
+        if (at) at.ids.push(ids[i]);
+        else byContent.set(key, { size: Number(c.size), ids: [ids[i]] });
+      });
+      for (const g of byContent.values()) if (g.ids.length >= 2) groups.push(g);
+    }
+    setTimeout(() => {
+      win.webContents.send("dup:progress", { done, total: done, bytes, totalBytes });
+      win.webContents.send("dup:done", groups);
+    }, 150);
+  });
+
+  // The plan for a cleanup run. The real planner validates every path against the
+  // scope and the protected lists before it puts anything in a plan; that is not
+  // reproduced here, and it does not need to be, because nothing is removed on the
+  // strength of this answer: the run below does the removal itself.
+  ipcMain.handle("clean:plan", (_e, scope, candidates, action) => {
+    const items = (candidates ?? []).map((c) => {
+      let size = null;
+      let mtime = null;
+      try {
+        const st = statSync(String(c.path));
+        size = st.size;
+        mtime = Math.max(0, Math.floor(st.mtimeMs / 1000));
+      } catch {
+        // Left null, which is what a path that vanished would give the real planner.
+      }
+      return { id: c.id, path: String(c.path), bytes: c.bytes, risk: String(c.risk), size, mtime };
+    });
+    return {
+      scope: String(scope),
+      action: action === "delete" ? "delete" : "trash",
+      items,
+      rejected: [],
+      estimatedBytes: items.reduce((sum, i) => sum + i.bytes, 0),
+    };
+  });
+
+  // The removal itself, for real, and reported item by item the way main reports it —
+  // including the audit record, which is where the receipt's "freed" figure comes
+  // from. Returning no record would make that figure zero and the check would pass on
+  // a number nobody should see.
+  ipcMain.handle("clean:run", async (_e, plan) => {
+    const outcomes = [];
+    for (const item of plan?.items ?? []) {
+      try {
+        await shell.trashItem(String(item.path));
+        outcomes.push({ path: item.path, status: "removed", bytes: item.bytes });
+      } catch (err) {
+        outcomes.push({ path: item.path, status: "failed", bytes: 0, error: String((err && err.message) || err) });
+      }
+    }
+    const removed = outcomes.filter((o) => o.status === "removed");
+    const failed = outcomes.filter((o) => o.status === "failed").length;
+    return {
+      outcomes,
+      invalidated: [],
+      record: {
+        at: Date.now(),
+        action: plan?.action === "delete" ? "delete" : "trash",
+        scope: String(plan?.scope ?? ""),
+        planned: (plan?.items ?? []).length,
+        estimatedBytes: Number(plan?.estimatedBytes ?? 0),
+        removed: removed.length,
+        failed,
+        skipped: 0,
+        bytesFreed: removed.reduce((sum, o) => sum + o.bytes, 0),
+        partial: failed > 0,
+        items: outcomes,
+        rejected: [],
+      },
+      error: null,
+    };
+  });
+
   // Answered for the same reason, and so that a screen asking for something this
   // harness does not stub shows up as a console error rather than being lost in a
   // list of noise nobody reads twice.
@@ -273,6 +373,18 @@ const VIEW_FIXTURE = {
 // fixture, the assertions and the report cannot drift apart.
 const DOOMED = ["doomed-one.bin", "doomed-two.bin", "doomed-three.bin"];
 
+// The duplicate pair, and a file of exactly the same size with different bytes in
+// it. The pane's own minimum is 10 MiB, so these are above it and a search finds
+// them without touching the control — which makes the wasted figure an assertion
+// about the fixture rather than about a control the harness had to drive first.
+const TWINS = ["twin-a.bin", "twin-b.bin"];
+const DECOY = "twin-odd.bin";
+const TWIN_BYTES = 12 * 1024 * 1024;
+
+// A folder the cleanup rules recognise by name alone, and big enough to clear their
+// 1 MiB floor.
+const CACHE = "node_modules";
+
 async function makeFixture() {
   const dir = mkdtempSync(path.join(tmpdir(), "spacewise-view-"));
   mkdirSync(path.join(dir, "nested"), { recursive: true });
@@ -282,7 +394,144 @@ async function makeFixture() {
   writeFileSync(path.join(dir, "README"), Buffer.alloc(VIEW_FIXTURE.bare));
   writeFileSync(path.join(dir, "nested", "deep.bin"), Buffer.alloc(VIEW_FIXTURE.deep));
   DOOMED.forEach((name, i) => writeFileSync(path.join(dir, name), Buffer.alloc((i + 1) * 1_000)));
+
+  const twin = Buffer.alloc(TWIN_BYTES, 7);
+  TWINS.forEach((name) => writeFileSync(path.join(dir, name), twin));
+  const odd = Buffer.alloc(TWIN_BYTES, 7);
+  odd[odd.length - 1] = 8; // the same length, one different byte
+  writeFileSync(path.join(dir, DECOY), odd);
+
+  mkdirSync(path.join(dir, CACHE, "pkg"), { recursive: true });
+  for (let i = 0; i < 4; i++) writeFileSync(path.join(dir, CACHE, "pkg", `chunk-${i}.bin`), Buffer.alloc(400_000, i));
+
   return { dir, table: await scanOnce(dir) };
+}
+
+// ── driving the interface ────────────────────────────────────────────────────
+//
+// Everything below works the same way: open a tab or a sheet the way a person does,
+// read what is on screen, press a button by the words written on it. These helpers
+// are that vocabulary, so a check reads as the interaction it describes.
+// Opening a tab and waiting for its pane to be the one on screen. A fixed delay is a
+// guess about how long a render takes, and this window is never shown, which Windows
+// throttles: under load the guess loses and the check then reads the pane that was
+// there before. So the wait is for the tab to be selected and for the pane to have
+// changed, with the tab that was asked for as the answer either way.
+async function openTab(win, label) {
+  const before = await win.webContents.executeJavaScript(`(() => {
+    const b = Array.from(document.querySelectorAll('[role="tab"]')).filter((e) => e.textContent.trim() === ${JSON.stringify(label)})[0];
+    if (!b) return null;
+    const aside = document.querySelector("aside.schedule");
+    const copy = aside ? aside.cloneNode(true) : null;
+    const bar = copy ? copy.querySelector(".tabs") : null;
+    if (bar) bar.remove();
+    const text = copy ? copy.textContent : "";
+    b.click();
+    return text;
+  })()`);
+  if (before === null) return false;
+  const settled = await until(
+    () =>
+      win.webContents.executeJavaScript(`(() => {
+        const on = Array.from(document.querySelectorAll('[role="tab"]')).filter((e) => e.getAttribute("aria-selected") === "true")[0];
+        const aside = document.querySelector("aside.schedule");
+        const copy = aside ? aside.cloneNode(true) : null;
+        const bar = copy ? copy.querySelector(".tabs") : null;
+        if (bar) bar.remove();
+        return { on: on ? on.textContent.trim() : "", text: copy ? copy.textContent : "" };
+      })()`),
+    (s) => s.on === label && s.text !== before,
+    25,
+  );
+  return settled.on === label;
+}
+
+// The pane beside the tab bar, without the tab bar: a tab label that also appears in
+// its pane would otherwise satisfy a search for the pane's content.
+function paneText(win) {
+  return win.webContents.executeJavaScript(`(() => {
+    const aside = document.querySelector("aside.schedule");
+    if (!aside) return "";
+    const copy = aside.cloneNode(true);
+    const bar = copy.querySelector(".tabs");
+    if (bar) bar.remove();
+    return copy.textContent || "";
+  })()`);
+}
+
+function dialogState(win) {
+  return win.webContents.executeJavaScript(`(() => {
+    const d = Array.from(document.querySelectorAll("dialog")).filter((x) => x.open)[0];
+    if (!d) return { open: false, title: "", text: "" };
+    const h = d.querySelector("h2");
+    return { open: true, title: h ? h.textContent.trim() : "", text: d.textContent || "" };
+  })()`);
+}
+
+// Pressing a button by the start of its words, in one named place. "Send to Recycle
+// Bin" is a row action, a pane action and a confirmation at once, so which place is
+// pressed has to be stated rather than assumed. A disabled button is not pressed and
+// says so, rather than being reported as missing.
+function pressButton(win, where, label) {
+  const root =
+    where === "dialog"
+      ? 'Array.from(document.querySelectorAll("dialog")).filter((x) => x.open)[0]'
+      : 'document.querySelector("aside.schedule .pane")';
+  return win.webContents.executeJavaScript(`(() => {
+    const root = ${root};
+    if (!root) return false;
+    const b = Array.from(root.querySelectorAll("button")).filter((e) => e.textContent.trim().indexOf(${JSON.stringify(label)}) === 0)[0];
+    if (!b || b.disabled) return false;
+    b.click();
+    return true;
+  })()`);
+}
+
+// Brings a row into the DOM by scrolling the list to it. The tree and the lists draw
+// only the rows near the scroll position, so a row further down is not there to be
+// clicked until it has been scrolled to — which is what a person does, and which a
+// check that assumed every row was drawn gets wrong the moment the fixture has
+// something big enough to push the row it wants off the first screen.
+async function scrollToRow(win, text) {
+  for (let step = 0; step < 40; step++) {
+    const at = await win.webContents.executeJavaScript(`(() => {
+      const grid = document.querySelector(".rows");
+      if (!grid) return "gone";
+      const here = Array.from(grid.querySelectorAll(".trow")).some((r) => (r.textContent || "").indexOf(${JSON.stringify(text)}) >= 0);
+      if (here) return "here";
+      if (grid.scrollTop + grid.clientHeight >= grid.scrollHeight - 1) return "end";
+      grid.scrollTop = grid.scrollTop + grid.clientHeight;
+      grid.dispatchEvent(new Event("scroll"));
+      return "moved";
+    })()`);
+    if (at === "here") return true;
+    if (at === "gone" || at === "end") return false;
+    await sleep(150); // the virtualiser has to redraw at the new position
+  }
+  return false;
+}
+
+// A figure the interface states — "12.0 MB", "768 KB" — as bytes, so it can be
+// compared with what the fixture really wrote. The value it is compared against is
+// rounded to a tenth too, so this is only ever used for a lower bound.
+function bytesOf(text) {
+  const m = /^([\d.,]+)\s*(B|KB|MB|GB|TB)$/i.exec(String(text ?? "").trim());
+  if (!m) return null;
+  const n = Number(m[1].replace(",", "."));
+  if (!Number.isFinite(n)) return null;
+  return n * Math.pow(1024, { B: 0, KB: 1, MB: 2, GB: 3, TB: 4 }[m[2].toUpperCase()]);
+}
+
+// Something that arrives on screen rather than immediately. Give it a bounded wait
+// and return the last thing read, so a check that never came true can say what it
+// saw instead.
+async function until(read, ok, tries = 30) {
+  let last = await read();
+  for (let i = 0; i < tries && !ok(last); i++) {
+    await sleep(120);
+    last = await read();
+  }
+  return last;
 }
 
 // Each tab is clicked the way a person clicks it, then the pane beside the tab bar
@@ -343,17 +592,10 @@ async function checkViews(win, fixture) {
   ];
 
   for (const [label, wants] of wanted) {
-    const clicked = await run(`(() => {
-      const b = Array.from(document.querySelectorAll('[role="tab"]')).filter((e) => e.textContent.trim() === ${JSON.stringify(label)})[0];
-      if (!b) return false;
-      b.click();
-      return true;
-    })()`);
-    if (!clicked) {
+    if (!(await openTab(win, label))) {
       problems.push(`the tab bar has no "${label}" tab`);
       continue;
     }
-    await sleep(400);
     const { pane, selected } = await readPane();
     const drew = typeof wants === "string" ? pane.indexOf(wants) >= 0 : wants.test(pane);
     if (selected !== label) problems.push(`the "${label}" tab did not become the selected one (it is "${selected}")`);
@@ -531,24 +773,15 @@ async function checkInteraction(win, fixture) {
   const run = (script) => win.webContents.executeJavaScript(script);
   const onDisk = (name) => existsSync(path.join(fixture.dir, name));
 
-  const showTab = async (label) => {
-    const found = await run(`(() => {
-      const b = Array.from(document.querySelectorAll('[role="tab"]')).filter((e) => e.textContent.trim() === ${JSON.stringify(label)})[0];
-      if (!b) return false;
-      b.click();
-      return true;
-    })()`);
-    await sleep(350);
-    return found;
-  };
-
-  const clickRow = (name) =>
-    run(`(() => {
+  const clickRow = async (name) => {
+    if (!(await scrollToRow(win, name))) return false;
+    return run(`(() => {
       const row = Array.from(document.querySelectorAll(".trow")).filter((r) => (r.textContent || "").indexOf(${JSON.stringify(name)}) >= 0)[0];
       if (!row) return false;
       row.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true }));
       return true;
     })()`);
+  };
 
   // Delete is the key the row list itself owns, so it is pressed on the grid that
   // holds the rows rather than on the window.
@@ -558,24 +791,6 @@ async function checkInteraction(win, fixture) {
       if (!grid) return false;
       grid.focus();
       grid.dispatchEvent(new KeyboardEvent("keydown", { key: "Delete", bubbles: true, cancelable: true }));
-      return true;
-    })()`);
-
-  const dialog = () =>
-    run(`(() => {
-      const d = Array.from(document.querySelectorAll("dialog")).filter((x) => x.open)[0];
-      if (!d) return { open: false, title: "", text: "" };
-      const h = d.querySelector("h2");
-      return { open: true, title: h ? h.textContent.trim() : "", text: d.textContent || "" };
-    })()`);
-
-  const pressIn = (scope, label) =>
-    run(`(() => {
-      const root = ${scope};
-      if (!root) return false;
-      const b = Array.from(root.querySelectorAll("button")).filter((e) => e.textContent.trim() === ${JSON.stringify(label)})[0];
-      if (!b) return false;
-      b.click();
       return true;
     })()`);
 
@@ -595,7 +810,7 @@ async function checkInteraction(win, fixture) {
   };
 
   // 1. Click a row. 2. Press Delete, then cancel: nothing may move.
-  if (!(await showTab("Tree"))) problems.push("the interaction pass found no Tree tab");
+  if (!(await openTab(win, "Tree"))) problems.push("the interaction pass found no Tree tab");
   const clicked = await clickRow(DOOMED[0]);
   if (!clicked) problems.push("the tree has no row for a file the fixture wrote");
   else {
@@ -608,14 +823,14 @@ async function checkInteraction(win, fixture) {
 
     await pressDelete();
     await sleep(400);
-    const asked = await dialog();
+    const asked = await dialogState(win);
     if (!asked.open) problems.push("Delete on a selected file asked nothing");
     else {
       if (asked.title !== "Send to the Recycle Bin?") problems.push(`the confirmation is titled "${asked.title}"`);
       if (asked.text.indexOf(DOOMED[0]) < 0) problems.push("the confirmation does not name the file it is about to send");
       else notes.push({ label: "Delete on a row", detail: "asked, and named the file" });
 
-      if (!(await pressIn(`Array.from(document.querySelectorAll("dialog")).filter((x) => x.open)[0]`, "Cancel"))) {
+      if (!(await pressButton(win, "dialog", "Cancel"))) {
         problems.push("the confirmation has no Cancel button");
       }
       await sleep(300);
@@ -628,10 +843,10 @@ async function checkInteraction(win, fixture) {
   await clickRow(DOOMED[0]);
   await pressDelete();
   await sleep(400);
-  const confirm = await dialog();
+  const confirm = await dialogState(win);
   if (!confirm.open) problems.push("Delete asked nothing the second time");
   else {
-    const confirmed = await pressIn(`Array.from(document.querySelectorAll("dialog")).filter((x) => x.open)[0]`, "Send to Recycle Bin");
+    const confirmed = await pressButton(win, "dialog", "Send to Recycle Bin");
     if (!confirmed) problems.push("the confirmation has no button to send the file");
     const gone = await waitGone(DOOMED[0]);
     if (!gone) problems.push(`${DOOMED[0]} is still on disk after the confirmation`);
@@ -652,21 +867,31 @@ async function checkInteraction(win, fixture) {
   }
 
   // 4. Two rows ticked, then the pane's own Delete button: both have to go.
-  if (!(await showTab("Largest"))) problems.push("the interaction pass found no Largest tab");
-  const ticked = await run(`(() => {
-    const want = ${JSON.stringify([DOOMED[1], DOOMED[2]])};
-    const boxes = Array.from(document.querySelectorAll('input[type="checkbox"]'));
-    let n = 0;
-    for (const name of want) {
-      const b = boxes.filter((e) => e.getAttribute("aria-label") === name)[0];
-      if (!b) continue;
+  if (!(await openTab(win, "Largest"))) problems.push("the interaction pass found no Largest tab");
+  let tickedCount = 0;
+  for (const name of [DOOMED[1], DOOMED[2]]) {
+    if (!(await scrollToRow(win, name))) continue;
+    const on = await run(`(() => {
+      const b = Array.from(document.querySelectorAll('input[type="checkbox"]')).filter((e) => e.getAttribute("aria-label") === ${JSON.stringify(name)})[0];
+      if (!b) return false;
       b.click();
-      n++;
-    }
-    return n;
-  })()`);
-  if (ticked !== 2) problems.push(`only ${ticked} of the two files could be ticked in the largest list`);
-  else {
+      return true;
+    })()`);
+    if (on) tickedCount++;
+  }
+  if (tickedCount !== 2) {
+    const seen = await run(`(() => {
+      const grid = document.querySelector(".rows");
+      return {
+        rows: document.querySelectorAll(".trow").length,
+        labels: Array.from(document.querySelectorAll('input[type="checkbox"]')).map((e) => e.getAttribute("aria-label")),
+        grid: grid ? grid.clientHeight + "/" + grid.scrollHeight + " at " + grid.scrollTop : "no grid",
+      };
+    })()`);
+    problems.push(
+      `only ${tickedCount} of the two files could be ticked in the largest list (${seen.rows} rows on screen, grid ${seen.grid}, labels [${seen.labels.join(" / ")}])`,
+    );
+  } else {
     await sleep(250);
     const bar = await run(`(() => {
       const pane = document.querySelector("aside.schedule .pane");
@@ -681,14 +906,14 @@ async function checkInteraction(win, fixture) {
       if (bar.disabled !== false) problems.push("the pane's Delete button is still disabled with two files ticked");
       notes.push({ label: "tick two rows", detail: bar.text.indexOf("Selected: 2") >= 0 ? "the bar reported two selected" : "the bar reported something else" });
 
-      const sent = await pressIn(`document.querySelector("aside.schedule .pane")`, "Send to Recycle Bin");
+      const sent = await pressButton(win, "pane", "Send to Recycle Bin");
       if (!sent) problems.push("the pane's Delete button could not be pressed");
       await sleep(400);
-      const many = await dialog();
+      const many = await dialogState(win);
       if (!many.open) problems.push("the pane's Delete asked nothing");
       else {
         if (many.text.indexOf("2 items") < 0) problems.push(`the confirmation reads "${many.text}", expected two items`);
-        await pressIn(`Array.from(document.querySelectorAll("dialog")).filter((x) => x.open)[0]`, "Send to Recycle Bin");
+        await pressButton(win, "dialog", "Send to Recycle Bin");
         const both = (await waitGone(DOOMED[1])) && (await waitGone(DOOMED[2]));
         if (!both) problems.push(`after a bulk delete, ${DOOMED.filter(onDisk).join(" and ")} are still on disk`);
         else {
@@ -706,6 +931,186 @@ async function checkInteraction(win, fixture) {
           else notes.push({ label: "delete two at once", detail: `${DOOMED[1]} and ${DOOMED[2]} left the disk and the list` });
         }
       }
+    }
+  }
+
+  return notes;
+}
+
+// A duplicate search, run and acted on from its own pane. The search is answered from
+// the files that are really there (see `dup:start`); what is checked here is that the
+// answer reaches the list, that the set is counted and priced in one place the same
+// way it is priced in the other, and that removing one copy takes the set out of the
+// list rather than leaving a "duplicate" of one behind.
+async function checkDuplicates(win, fixture) {
+  const notes = [];
+  const onDisk = (name) => existsSync(path.join(fixture.dir, name));
+
+  if (!(await openTab(win, "Duplicates"))) {
+    problems.push("the duplicate check found no Duplicates tab");
+    return notes;
+  }
+  if (!(await pressButton(win, "pane", "Look for duplicates"))) {
+    problems.push("the duplicate pane offers no way to start a search");
+    return notes;
+  }
+
+  // The answer arrives on its own channel, so wait for it to appear rather than for
+  // a delay that happens to be long enough. The summary, the group and the rows are
+  // read in one go: read separately they can come from two different renders, and the
+  // check then compares a total from one against a row from the other.
+  const pane = () =>
+    win.webContents.executeJavaScript(`(() => {
+      const p = document.querySelector("aside.schedule .pane");
+      const g = document.querySelector(".trow.group");
+      return {
+        text: p ? p.textContent : "",
+        group: g ? g.textContent : "",
+        rows: Array.from(document.querySelectorAll(".trow")).map((r) => (r.textContent || "").replace(/\\s+/g, " ").trim()),
+      };
+    })()`);
+  const shot = await until(pane, (s) => /sets?, .*wasted/.test(s.text) || s.text.indexOf("No duplicates at this size") >= 0);
+  const listed = shot.text;
+  const summary = /(\d+) sets?, (.+?) wasted/.exec(listed);
+  if (!summary) {
+    problems.push(`the duplicate search never reported a result: ${JSON.stringify(listed.slice(0, 160))}`);
+    return notes;
+  }
+  if (summary[1] !== "1") problems.push(`the search reported ${summary[1]} sets, expected the one pair in the fixture`);
+  if (listed.indexOf("2 copies") < 0) problems.push("the duplicate set does not say how many copies it holds");
+  if (!TWINS.every((name) => listed.indexOf(name) >= 0)) {
+    problems.push(`the duplicate list does not name both copies: ${JSON.stringify(listed.slice(0, 200))}`);
+  }
+  // The negative case, which is the one a size-only search gets wrong.
+  if (listed.indexOf(DECOY) >= 0) {
+    problems.push(`${DECOY} is exactly as long as the twins and different, and was listed as a copy anyway`);
+  }
+
+  // What one copy costs, in both places the pane states it. The set's figure is the
+  // length the copies share; the saving is the space they occupy on disk. Those are
+  // different quantities on purpose — a sparse or compressed copy frees less than its
+  // length — so they are not compared with each other. Both are required to be at
+  // least the bytes the fixture wrote, which a figure taken from the wrong nodes
+  // cannot be. Rounded to a tenth either way, so this is a bound and not an equality.
+  const groupMatch = /^([\d.,]+\s?[KMG]?B)/i.exec(shot.group);
+  const priced = bytesOf(groupMatch ? groupMatch[1] : "");
+  const saving = bytesOf(summary[2]);
+  if (priced === null) problems.push(`the duplicate group does not show what one copy occupies: ${JSON.stringify(shot.group)}`);
+  else if (priced < TWIN_BYTES) problems.push(`the set is priced at ${String(shot.group).slice(0, 20)}, under the ${TWIN_BYTES} bytes in each copy`);
+  if (saving === null) problems.push(`the saving is not a figure: ${JSON.stringify(summary[2])}`);
+  else if (saving < TWIN_BYTES) {
+    problems.push(`the saving is reported as ${summary[2].trim()}, under one copy of ${TWIN_BYTES} bytes; the rows were [${shot.rows.join(" | ")}]`);
+  }
+  notes.push({ label: "search", detail: `${summary[1]} set, ${summary[2].trim()} wasted, and the same-size decoy was not listed` });
+
+  // Remove one copy from the list, which is the gesture the pane offers for it.
+  if (!(await scrollToRow(win, TWINS[0]))) problems.push(`the duplicate list does not show ${TWINS[0]}`);
+  const bin = await win.webContents.executeJavaScript(`(() => {
+    const row = Array.from(document.querySelectorAll(".trow")).filter((r) => (r.textContent || "").indexOf(${JSON.stringify(TWINS[0])}) >= 0)[0];
+    if (!row) return false;
+    const b = Array.from(row.querySelectorAll("button")).filter((e) => e.getAttribute("aria-label") === "Send to Recycle Bin")[0];
+    if (!b) return false;
+    b.click();
+    return true;
+  })()`);
+  if (!bin) {
+    problems.push(`the duplicate row for ${TWINS[0]} offers no way to remove that one copy`);
+    return notes;
+  }
+  const asked = await until(() => dialogState(win), (d) => d.open);
+  if (!asked.open) problems.push("removing a copy from the duplicate list asked nothing");
+  else if (asked.text.indexOf(TWINS[0]) < 0) problems.push("the confirmation does not name the copy it is about to remove");
+  else {
+    await pressButton(win, "dialog", "Send to Recycle Bin");
+    for (let i = 0; i < 30 && onDisk(TWINS[0]); i++) await sleep(100);
+    if (onDisk(TWINS[0])) problems.push(`${TWINS[0]} is still on disk after being removed from the duplicate list`);
+    else {
+      // One copy left is not a duplicate: the set has to leave the list.
+      const after = await until(() => paneText(win), (t) => t.indexOf("No duplicates at this size") >= 0 || /0 sets?, /.test(t));
+      if (after.indexOf("No duplicates at this size") < 0 && !/0 sets?, /.test(after)) {
+        problems.push(`after removing one copy the list still reports a set: ${JSON.stringify(after.slice(0, 160))}`);
+      } else {
+        notes.push({ label: "remove one copy", detail: `${TWINS[0]} left the disk and the set of two left the list` });
+      }
+    }
+  }
+
+  return notes;
+}
+
+// A cleanup review: tick what the rules found, ask for a plan, read the review, carry
+// it out, and be told what happened. The removal is real, so the folder has to be gone
+// afterwards and the tab has to say so rather than only having called something.
+async function checkCleanup(win, fixture) {
+  const notes = [];
+  const onDisk = (name) => existsSync(path.join(fixture.dir, name));
+
+  if (!(await openTab(win, "Clean up"))) {
+    problems.push("the cleanup check found no Clean up tab");
+    return notes;
+  }
+  const found = await until(() => paneText(win), (t) => t.indexOf("could be reclaimed") >= 0 || t.indexOf("Nothing to suggest") >= 0);
+  if (found.indexOf("could be reclaimed") < 0) {
+    problems.push(`the clean-up tab found nothing in a fixture holding a node_modules folder: ${JSON.stringify(found.slice(0, 160))}`);
+    return notes;
+  }
+  notes.push({ label: "candidates", detail: "the rules found the folder the fixture planted" });
+
+  // Ticking the category is the pane's own "all of this kind" control.
+  const ticked = await win.webContents.executeJavaScript(`(() => {
+    const box = Array.from(document.querySelectorAll('input[type="checkbox"]')).filter((e) => e.getAttribute("aria-label") === "Project dependencies")[0];
+    if (!box) return false;
+    box.click();
+    return true;
+  })()`);
+  if (!ticked) {
+    problems.push("the clean-up list offers no way to tick the category it found");
+    return notes;
+  }
+  await sleep(250);
+
+  if (!(await pressButton(win, "pane", "Review and clean"))) {
+    problems.push("the clean-up pane has no Review and clean button, or it stayed disabled with a candidate ticked");
+    return notes;
+  }
+  const review = await until(() => dialogState(win), (d) => d.open && d.title.length > 0);
+  if (!review.open) problems.push("Review and clean opened no review");
+  else {
+    if (review.title !== "Review before removing") problems.push(`the review is titled "${review.title}"`);
+    if (review.text.indexOf("Move to Recycle Bin (recoverable from Windows)") < 0) {
+      problems.push("the review does not say what will happen to the folder");
+    }
+    if (!/1 locations?, /.test(review.text)) problems.push(`the review does not say how many and how much: ${JSON.stringify(review.text.slice(0, 200))}`);
+    if (review.text.indexOf(CACHE) < 0) problems.push("the review does not name the folder it will remove");
+    notes.push({ label: "review", detail: "named the action, the count and the folder" });
+
+    if (!(await pressButton(win, "dialog", "Remove"))) {
+      problems.push("the review offers no button to carry it out");
+      return notes;
+    }
+    const done = await until(() => dialogState(win), (d) => d.open && d.title === "Cleanup finished", 60);
+    if (!done.open) {
+      // The pane shows the reason when the call comes back as a failure, so it is
+      // read and quoted rather than the run simply being reported as silent.
+      const pane = await paneText(win);
+      problems.push(
+        `the cleanup run never reported finishing (the folder is ${onDisk(CACHE) ? "still on disk" : "gone"}); the pane says ${JSON.stringify(String(pane).slice(0, 200))}`,
+      );
+    } else if (done.title !== "Cleanup finished") {
+      // Still on the running sheet, which is what a run that never came back looks
+      // like: say which one it is stuck on rather than only that it did not finish.
+      problems.push(`the run never reached its report; it is still on "${done.title}"`);
+    } else {
+      if (done.text.indexOf("Everything selected was removed") < 0) {
+        problems.push(`the run was not reported as complete: ${JSON.stringify(done.text.slice(0, 200))}`);
+      }
+      const freed = /1 removed, (.+?) freed/.exec(done.text);
+      if (!freed) problems.push(`the report does not say how many were removed and how much was freed: ${JSON.stringify(done.text.slice(0, 200))}`);
+      else if (/^0\s?B$/i.test(freed[1].trim())) {
+        problems.push("the report says nothing was freed after removing a folder that held bytes");
+      }
+      if (onDisk(CACHE)) problems.push(`${CACHE} is still on disk after a run that reported it removed`);
+      else notes.push({ label: "run", detail: "the folder left the disk, and the report said so" });
     }
   }
 
@@ -735,6 +1140,11 @@ app
     win.webContents.on("console-message", (...args) => onConsole(args));
     win.webContents.on("render-process-gone", (_e, d) => problems.push(`the renderer process died: ${d.reason}`));
     win.webContents.on("preload-error", (_e, file, err) => problems.push(`the preload failed: ${file}: ${err.message}`));
+    // A window that is never shown is treated as occluded, and Chromium then defers
+    // its work: timers, rendering, and the layout the virtualised lists measure
+    // themselves against. That made this harness read half-drawn panes depending on
+    // how busy the machine was. The renderer is told to keep working.
+    win.webContents.setBackgroundThrottling(false);
 
     // The screens under test ask the main process for their content. Answer before
     // anything loads, so what is read below is a screen drawing an answer rather than
@@ -744,6 +1154,16 @@ app
 
     await win.loadFile(html);
     await sleep(1500); // let React mount and the first IPC round trip settle
+
+    // Anything that throws inside the page, kept with its stack. A render that dies
+    // takes the whole interface with it, and the report otherwise says only that a
+    // pane was empty, which is the symptom rather than the cause.
+    await win.webContents.executeJavaScript(`
+      window.__smokeErrors = [];
+      window.addEventListener("error", (e) => window.__smokeErrors.push(String((e.error && e.error.stack) || e.message)));
+      window.addEventListener("unhandledrejection", (e) => window.__smokeErrors.push(String((e.reason && e.reason.stack) || e.reason)));
+      true;
+    `);
 
     const probe = await win.webContents.executeJavaScript(`(() => {
       const body = getComputedStyle(document.body);
@@ -813,6 +1233,10 @@ app
     // Then the same window is used: rows are clicked, ticked and deleted for real.
     const moves = fixture ? await checkInteraction(win, fixture) : [];
 
+    // A duplicate search and a cleanup review, each driven from its own pane.
+    const dupes = fixture ? await checkDuplicates(win, fixture) : [];
+    const cleaned = fixture ? await checkCleanup(win, fixture) : [];
+
     // The production scan, on a real folder with a known answer.
     let scan = null;
     try {
@@ -861,6 +1285,16 @@ app
       console.log("  clicking and deleting for real");
       for (const n of moves) console.log("    " + n.label.padEnd(26) + n.detail);
     }
+    if (dupes.length > 0) {
+      console.log("");
+      console.log("  a duplicate search, from its pane");
+      for (const n of dupes) console.log("    " + n.label.padEnd(26) + n.detail);
+    }
+    if (cleaned.length > 0) {
+      console.log("");
+      console.log("  a cleanup review, from its pane");
+      for (const n of cleaned) console.log("    " + n.label.padEnd(26) + n.detail);
+    }
     console.log("");
     console.log("  policy behaviour");
     console.log("    inline <style> element      " + (refusedStyleElement ? "refused (correct)" : "ALLOWED (unexpected)"));
@@ -874,6 +1308,21 @@ app
     console.log("");
 
     if (fixture) rmSync(fixture.dir, { recursive: true, force: true });
+
+    const thrown = await win.webContents.executeJavaScript(`window.__smokeErrors || []`);
+    if (thrown.length > 0) {
+      console.log("");
+      console.log("  thrown inside the page, " + thrown.length + ":");
+      for (const e of thrown.slice(0, 6)) {
+        const lines = String(e).split("\n");
+        for (const line of lines.slice(0, 6)) console.log("    " + line.trim());
+        console.log("");
+        // A throw in the page is the whole interface: React unmounts what it was
+        // drawing, so every pane is empty afterwards and each check fails on a
+        // symptom. The first line of the stack is the thing worth failing on.
+        problems.push(`the page threw: ${lines[0].trim()}`);
+      }
+    }
 
     if (problems.length > 0) {
       console.error("SMOKE FAILED");

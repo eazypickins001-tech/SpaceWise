@@ -56,11 +56,29 @@ real preload and the real Content Security Policy, then fails if
   process makes, so what is asserted is that the files are gone, not that a call was made. It was
   falsified before it was trusted: with the view left un-refreshed while the file still left the
   disk, both assertions fail and name the rows that were left behind.
+- the **duplicate search and the cleanup review work end to end**. It starts a search from the
+  Duplicates pane and requires the result to reach the list: one set, two copies named, and the file
+  of exactly the same size with different content **not** named as a copy. The saving has to be at
+  least the bytes in one copy — not equal to the set's figure, because those are different
+  quantities on purpose: a set is priced by the length its copies share, and a saving by the space
+  they occupy on disk. It then removes one copy from that list and requires the set to leave it,
+  since one copy is not a duplicate. Finally it ticks a category in the Clean up tab, asks for a
+  plan, reads the review — which has to name the action, the count and the folder — confirms it, and
+  requires the folder to leave the disk and the report to say how much was freed. Both searches are
+  answered from a fixed script, because the product's hashing and planning run in the main process
+  and are tested against the real code; the removal is real, and `shell:trash` is answered with the
+  same call the main process makes.
 - the **application does not start**. It also starts the built main process in a child and fails
   if it throws while loading or never opens a window. Nothing else loads `out/main/index.js`, so
   a main process that dies before `app.whenReady()` used to pass the entire suite; a duplicated
   `ipcMain.handle()` registration did exactly that, and the only symptom was Electron's own
   "Error" dialog. `npm run boot` runs that check on its own when you want it without the rest.
+
+The window it uses is hidden but deliberately not throttled (`setBackgroundThrottling(false)`). A
+window Chromium believes is occluded defers its work, and the virtualised lists then measure
+themselves a few rows tall — which made these checks read half-drawn panes and fail about one run in
+three, depending on how busy the machine was. A hidden window is enough for the policy checks; it is
+not enough for checks that have to read what was drawn.
 
 It also asserts what the policy *should* refuse, because a check that cannot fail is not a check:
 
@@ -124,12 +142,11 @@ Highlights worth knowing about:
 This list is the honest gap: what no test reaches today. Where something on it has since been
 partly closed, it says so and says what is left.
 
-- **The rest of the interaction is still not driven.** Rows are now clicked, ticked and deleted for
-  real, which moved files in the Recycle Bin to prove it, but nothing in a test reviews a cleanup,
-  starts a duplicate search, opens a context menu, drags a folder in, or walks the rows with the
-  arrow keys and the file clipboard: those paths are covered by unit tests over their pure parts and
-  by nothing else. A component that throws once *those* open over real scan data would still ship
-  unnoticed.
+- **The rest of the interaction is still not driven.** Rows are clicked, ticked and deleted, a
+  duplicate search is run and acted on, and a cleanup review is carried out — all for real. What
+  nothing does is open a context menu, drop a folder on the window, walk the rows with the arrow
+  keys, use the file clipboard, or open the cleanup history and the optional summary. A component
+  that throws once *those* open over real scan data would still ship unnoticed.
 - **No test picks a folder or drags one in.** The Scan button on a drive row is now clicked (`npm
   run smoke`), but the "Scan a folder…" dialog, a folder dropped on the window and the unreadable
   rows of the drive list are untested end to end; every other test starts a scan by calling the

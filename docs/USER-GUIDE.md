@@ -276,11 +276,12 @@ Stated plainly, because finding out later is worse.
 - **Hard-linked files are counted once per name** in scan totals. This is standard for storage
   tools, and it makes folders such as `WinSxS` look larger than the space they uniquely occupy.
   The duplicates figure is not affected.
-- **Deleting is checked automatically; the rest of the interaction is not.** `npm run smoke` opens
-  every sheet, scans a small fixture folder and clicks every tab, then clicks a row and sends it to
-  the Recycle Bin, ticks two rows and deletes them together, and checks the files really left the
-  disk and the lists. What no test does is review a cleanup, start a duplicate search, drag a folder
-  in, or use the arrow keys and the clipboard against real scan data.
+- **The main paths are checked automatically; the rest of the interaction is not.** `npm run smoke`
+  opens every sheet, scans a small fixture folder, clicks every tab, clicks a row and sends it to
+  the Recycle Bin, ticks two rows and deletes them together, runs a duplicate search and removes one
+  copy, and carries out a cleanup review — checking each time that the files really left the disk and
+  the lists. What no test does is open a right-click menu, drag a folder in, use the arrow keys or the
+  file clipboard, or open the cleanup history and the optional summary.
 - **The map's arithmetic is measured; its painting is not verified automatically.**
 - **No installer, upgrade or uninstall test on a clean machine has been run.**
 - **Large drives take time.** The scan rate was measured at between roughly thirty thousand and
