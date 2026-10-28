@@ -110,7 +110,9 @@ This list is the honest gap. None of it has been run.
 - **The treemap is never painted.** Its layout arithmetic is measured and pinned by tests, but
   the paint itself needs a canvas and has no automated check at all.
 - **No clean-machine install, upgrade or uninstall test**, and nothing checks that an update
-  actually applies once one is published.
+  actually applies. `v0.1.0` is now published, but the repository is private: a request for its
+  `latest.yml` without credentials returns 404, so the application cannot even reach the feed. No
+  updater path has therefore been exercised end to end.
 - **No signed-build verification**, because there is no signing certificate. Signing is
   deliberately deferred, and the consequence is recorded in `SECURITY.md`.
 

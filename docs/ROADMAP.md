@@ -126,18 +126,20 @@ would really free; the treemap layout is tested; the walk has been extracted and
 against a fake disk and a real one; the optional storage summary is built, in the shape
 the entitlement table already reserved for it; the Android erase contract was changed to
 take the same guarded target the desktop path takes, so that build cannot be written without
-the recheck being available to it; and the scan has now been measured on a two-million-file tree
-(9.5 to 17.2 s, with the folder-shape caveat recorded in `docs/TESTING.md`).
+the recheck being available to it; the scan has now been measured on a two-million-file tree
+(9.5 to 17.2 s, with the folder-shape caveat recorded in `docs/TESTING.md`); `SITE` points at
+`https://dominixai.com`; and the first release is published as `v0.1.0`, which is what exposed the
+feed problem in the first item below.
 
-1. **Publish the first release.** The feed is wired and `app-update.yml` ships inside the
-   package, but the repository has no releases yet, so a version check reaches GitHub and finds
-   nothing. Until one exists the updater is correct but unexercised end to end.
+1. **Make the update feed reachable.** `v0.1.0` is published, and publishing it found the real
+   blocker: the repository is **private**, so an unauthenticated fetch of `latest.yml` returns 404
+   and the application — which carries no token — cannot see the feed at all. The options are to
+   make the repository public (it is MIT, and nothing secret lives in it), to serve a generic feed
+   from a Worker or R2, or to ship manual updates only. Until one is chosen, "Check for updates"
+   will keep reporting that there is nothing there.
 2. **Buy a code-signing certificate** and wire signing into the release job. Declined for now,
    deliberately: the consequence is the SmartScreen warning on first run and nothing else is
    blocked. It matters more the moment the update feed is used in anger — see `SECURITY.md`.
-3. Give `SITE` in `App.tsx` its real value. It is a placeholder for now, and the Help entry is
-   drawn only once it holds an address, so nothing is inert in the meantime. `REPO` and the
-   contact address in `CONTACT` are set, so the Source and contact entries work as they are.
 
 ## Explicitly out of scope
 

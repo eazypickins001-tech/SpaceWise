@@ -28,7 +28,7 @@ This repository is at **Phase 1–5 of 6**. Be sceptical of anything not listed 
 | Licensing (Ed25519, entitlements, offline grace) | Working — Help → Licence. Premium gates the Changes view (`compare.scans`), unlimited duplicate results (`duplicates.unlimited`) and the optional summary (`ai.summary`). |
 | Optional AI storage summary | **Off by default.** Written from the findings the rules already made, never selects anything, and the exact message is shown before it is sent. Needs a licence and an endpoint you configure. |
 | Content Security Policy | Strict — no inline styles and no inline scripts. Asserted by `npm run smoke`, which also proves it can detect a refusal. |
-| Installer + portable build | Configured; packaging verified with `--dir` (see `docs/TESTING.md`) |
+| Installer + portable build | Published as **`v0.1.0`** — installer and portable, both built from the tagged commit and checked against `latest.yml` before upload. The updater still cannot see that release: the repository is private, so an unauthenticated request for the feed returns 404. |
 | Code signing | **Not done.** No certificate. SmartScreen will warn. |
 
 `docs/ENGINEERING_AUDIT.md` records the evidence behind every claim above, including
