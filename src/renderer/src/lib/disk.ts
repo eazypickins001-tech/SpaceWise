@@ -42,9 +42,12 @@ export class Disk {
   hasError(id: number): boolean {
     return (this.t.flags[id] & F_ERR) !== 0;
   }
-  isGone(id: number): boolean {
-    return (this.t.flags[id] & F_GONE) !== 0;
-  }
+  // An arrow field rather than a method, because it is handed to other code as a
+  // value: `reclaimableBytes` in shared/dupes.ts takes an `(id) => boolean` and calls
+  // it, so `disk.isGone` arrives there without a receiver. A method loses `this` and
+  // the call throws, which a type of `(id: number) => boolean` cannot express — the
+  // type promises a standalone function, so this is one.
+  isGone = (id: number): boolean => (this.t.flags[id] & F_GONE) !== 0;
   files(id: number): number {
     return this.isDir(id) ? this.t.files[id] : 1;
   }
