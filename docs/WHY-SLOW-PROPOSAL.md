@@ -1,8 +1,10 @@
 # Proposal — “Why is it slow?”
 
-**Status: proposal. Nothing in this document is built, and nothing here is a claim about the
-product as it ships today.** It exists so the decision can be made on the record before any code,
-the way the audit and the roadmap treat every other change of scope.
+**Status: v1 built** (`4e153f8` measurement and analysis, `36894db` the sheet). Sections 3 to 7
+and the v1 list in section 8 are now the code, with one exception: the per-application boot
+breakdown (events 101–110) is not read, so the boot finding reports a duration and no names. The
+rest of this document is kept as written, because it is the reasoning the code was built from —
+including one row corrected below by measurement rather than argument.
 
 ---
 
@@ -58,7 +60,7 @@ unavailable rather than as “fine”.
 | Signal | How it is read | What it can honestly say | Caveat |
 | --- | --- | --- | --- |
 | Free space on the system volume | already available from `fs.statfs` | How full the drive is against the threshold where Windows starts to struggle | Threshold is a heuristic, and will be labelled as one |
-| Page file and commit charge | `Win32_PageFileUsage`, `Win32_OperatingSystem`, `Win32_PerfFormattedData_PerfOS_Memory` | Committed bytes against physical RAM — i.e. is the disk being used as memory | Requires a sample, not an instant |
+| Page file and commit charge | `Win32_PerfFormattedData_PerfOS_Memory` (`CommittedBytes`, `CommitLimit`) | Committed bytes against the **commit limit**, not against physical RAM — Windows commits more than it holds, so comparing to RAM reported 328% on a healthy machine when this was built | Requires a sample, not an instant |
 | Disk health | `Get-PhysicalDisk` + `Get-StorageReliabilityCounter`, `Win32_DiskDrive.Status` | Wear, reported errors, `Pred Fail` | Consumer drives often report little; “no data” is not “healthy” |
 | Disk latency and queue | perf counters `AvgDiskSecPerTransfer`, `CurrentDiskQueueLength` | Whether I/O is the bottleneck *while measured* | Meaningful only during activity; the window must be shown |
 | Boot time and what delayed it | `Microsoft-Windows-Diagnostics-Performance/Operational`, event 100 and its 101–110 breakdown | “Windows measured the last boot at 43 s; two applications accounted for 12 s of it” | May need elevation on some builds; degrade to “unavailable” |
