@@ -1,6 +1,6 @@
 # Roadmap
 
-Status as of the `v0.1.1` release. Each phase states what was required, what exists, and what is
+Status as of the `v0.1.2` release. Each phase states what was required, what exists, and what is
 honestly still missing. Where a line here disagrees with the code or with `docs/TESTING.md`, those
 are right and this file is the thing to fix.
 
@@ -114,7 +114,7 @@ than a bug.
 | Criterion | State |
 | --- | --- |
 | Windows build succeeds | **Verified** — `npm run build` exits 0 |
-| Packaging succeeds | **Verified** — `npm run dist` builds the NSIS installer and the portable exe; the installer is checked against `latest.yml` before upload, and two releases have shipped from that path (`v0.1.0`, `v0.1.1`) |
+| Packaging succeeds | **Verified** — `npm run dist` builds the NSIS installer and the portable exe; the installer is checked against `latest.yml` before upload, and three releases have shipped from that path (`v0.1.0`, `v0.1.1`, `v0.1.2`) |
 | Critical tests pass | **Verified** — `npm test`: 342 tests, 0 failures. `npm run smoke` passes, and `npm run verify:feed` proves the published release reaches an updater. Re-run all three rather than trusting these numbers |
 | Known limitations documented | **Done** — in the README, `docs/TESTING.md` and `docs/SECURITY.md` |
 | Licence notices preserved | **Done** — `THIRD-PARTY-NOTICES.md` including the SIL OFL font notice |
@@ -135,8 +135,9 @@ the entitlement table already reserved for it; the Android erase contract was ch
 take the same guarded target the desktop path takes, so that build cannot be written without
 the recheck being available to it; the scan has now been measured on a two-million-file tree
 (9.5 to 17.2 s, with the folder-shape caveat recorded in `docs/TESTING.md`); `SITE` points at
-`https://dominixai.com`; the first releases are published — `v0.1.0`, then `v0.1.1` with the two
-faults the driving checks found; and publishing them exposed the next problem, which is now closed:
+`https://dominixai.com`; three releases are published — `v0.1.0`; `v0.1.1` with the two faults the
+driving checks found; and `v0.1.2` with the diagnosis easier to find and its refusals in plain words;
+and publishing the first of them exposed the next problem, which is now closed:
 the repository was private, so the application could not reach its own feed at all. It is public,
 and `npm run verify:feed` proves the feed is readable without credentials, that an older install is
 offered the published version, and that an install already on it is not offered it again.
@@ -146,7 +147,7 @@ offered the published version, and that an install already on it is not offered 
    another machine. Nothing in the product has to change for it, which is the point: the checks
    cover the interface, and this covers the machine.
 2. **Put it in front of testers.** No repository work; the exercise is what they find. The release
-   to install is `v0.1.1`, and the app now checks for updates itself (Help → Check for updates), so
+   to install is `v0.1.2`, and the app now checks for updates itself (Help → Check for updates), so
    a fault found by a tester can reach them without a reinstall.
 3. **A code-signing certificate**, wired into the release job — before selling, and not before
    testing. The consequence of going without is the SmartScreen warning on first run; it matters
